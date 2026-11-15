@@ -34,6 +34,9 @@ struct VideoPlayer {
   @State tabTitle: ResourceStr[] = [$r('app.string.video_overview'), $r('app.string.video_reply', 0)];
   @StorageLink('replyItem') @Watch('onReplyUpdated') replyItem: ReplyItem = null;
   @State pageState: string = "";
+  @State fansCount: number = 0;
+  @State archiveCount: number = 0;
+  @State isFollowing: Boolean = false;
 
   aboutToAppear() {
     this.replyItem = null;
@@ -63,6 +66,11 @@ struct VideoPlayer {
     EmptyBaseVideo("VideoInfoView"),
     EmptyBaseVideo("VideoTopBar")]);
     ApiManager.getInstance().requestRelated(this.vInfo.bvid);
+    ApiManager.getInstance().requestUserCardInfo(this.vInfo.owner.mid).then(response => {
+      this.fansCount = response.data.follower;
+      this.archiveCount = response.data.archive_count;
+      this.isFollowing = response.data.following;
+    })
     ApiManager.getInstance()
       .requestReply(this.vInfo.bvid, 0, 1, 0)
       .then((cursor: ReplyCursor) => {
@@ -134,7 +142,7 @@ struct VideoPlayer {
         } else {
           Tabs({ index: this.currentIndex }) {
             TabContent() {
-              VideoOverview({ vInfo: $vInfo })
+              VideoOverview({ vInfo: $vInfo, isFollowing: $isFollowing, fansCount: $fansCount, archiveCount: $archiveCount })
             }
             .tabBar(this.TabBuilder(0))
 

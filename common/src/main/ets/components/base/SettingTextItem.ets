@@ -21,7 +21,15 @@ export struct SettingTextItem {
         range: this.arr,
         selected: this.arr.indexOf(this.value),
         onAccept: (value: TextPickerResult) => {
-          this.value = this.arr[value.index]
+          let index: number = -1;
+          if (typeof value.index === 'number') {
+            index = value.index;
+          } else if (Array.isArray(value.index) && value.index.length > 0) {
+            index = value.index[0];
+          }
+          if (index >= 0 && index < this.arr.length) {
+            this.value = this.arr[index]
+          }
         } })
     }
   }

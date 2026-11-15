@@ -11,9 +11,7 @@
  */
 
 import router from '@ohos.router';
-import bundleManager from '@ohos.bundle.bundleManager';
 import util from '@ohos.util';
-import abilityAccessCtrl, { Permissions } from '@ohos.abilityAccessCtrl';
 import { WindowManager } from '@ohos/common';
 import { ApiManager } from '@ohos/common';
 import { BLog } from '@ohos/common';
@@ -27,11 +25,6 @@ struct Splash {
   @StorageLink('appUuid') appUuid: string = 'undefined';
 
   aboutToAppear() {
-    let list: Array<Permissions> = [
-      'ohos.permission.MEDIA_LOCATION',
-      'ohos.permission.READ_MEDIA'];
-    let atManager = abilityAccessCtrl.createAtManager();
-
     BLog.setDebug(this.appLogDebug == '1');
 
     if (this.appUuid == 'undefined') {
@@ -39,53 +32,15 @@ struct Splash {
     }
     BLog.i("appUuid: " + this.appUuid);
 
-    this.checkAccessToken(list[0]).then((grantStatus) => {
-      if (grantStatus === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED) {
-        this.initTask();
-        setTimeout(() => {
-          router.replaceUrl({ url: "pages/Index" });
-        }, 1000);
-      } else {
-        atManager.requestPermissionsFromUser(globalThis.appContext, list, (err, result) => {
-          if (err) {
-            BLog.e("dodo requestPermissionsFromUserError:" + JSON.stringify(err));
-          } else {
-            this.initTask();
-            router.replaceUrl({ url: "pages/Index" });
-          }
-        })
-      }
-    });
+    this.initTask();
+    setTimeout(() => {
+      router.replaceUrl({ url: "pages/Index" });
+    }, 1000);
   }
 
   async initTask() {
     ApiManager.getInstance().requestRecommend(1, true);
     ApiManager.getInstance().requestPopular(1);
-  }
-
-  async checkAccessToken(permission: Permissions): Promise<abilityAccessCtrl.GrantStatus> {
-    let atManager = abilityAccessCtrl.createAtManager();
-    let grantStatus: abilityAccessCtrl.GrantStatus;
-
-    // 获取应用程序的accessTokenID
-    let tokenId: number;
-    try {
-      let bundleInfo: bundleManager.BundleInfo = await bundleManager
-        .getBundleInfoForSelf(bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_APPLICATION);
-      let appInfo: bundleManager.ApplicationInfo = bundleInfo.appInfo;
-      tokenId = appInfo.accessTokenId;
-    } catch (err) {
-      BLog.e(`getBundleInfoForSelf failed, code is ${err.code}, message is ${err.message}`);
-    }
-
-    // 校验应用是否被授予权限
-    try {
-      grantStatus = await atManager.checkAccessToken(tokenId, permission);
-    } catch (err) {
-      BLog.e(`checkAccessToken failed, code is ${err.code}, message is ${err.message}`);
-    }
-
-    return grantStatus;
   }
 
   onPageShow() {
