@@ -20,6 +20,8 @@ export interface Search {
   numResults: number
   numPages: number
   result: SearchVideo[]
+  /** 风控凭证：命中风控时 B 站返回 200 + data 仅含 v_voucher（无 result 数组） */
+  v_voucher?: string
 }
 
 export interface SearchVideo {

@@ -15,6 +15,7 @@ import util from '@ohos.util';
 import { WindowManager } from '@ohos/common';
 import { ApiManager } from '@ohos/common';
 import { BLog } from '@ohos/common';
+import { LoginHelper } from '@ohos/common';
 
 storageInit();
 
@@ -41,6 +42,14 @@ struct Splash {
   async initTask() {
     ApiManager.getInstance().requestRecommend(1, true);
     ApiManager.getInstance().requestPopular(1);
+    // 异步校验并恢复登录态，不阻塞 1 秒跳转
+    LoginHelper.validateAndRestoreLoginState().then((isValid: boolean) => {
+      BLog.i("validateAndRestoreLoginState: " + isValid);
+    });
+    // 异步预取设备 Cookie（buvid3/buvid4，官方指纹接口），不阻塞跳转
+    LoginHelper.ensureDeviceCookies().then(() => {
+      BLog.i("ensureDeviceCookies done");
+    });
   }
 
   onPageShow() {
@@ -72,4 +81,17 @@ function storageInit() {
 
   PersistentStorage.PersistProp('appLogDebug', '0');
   PersistentStorage.PersistProp('appUuid', 'undefined');
+
+  // 扫码登录相关持久化键
+  PersistentStorage.PersistProp('isOhBiliLoggedIn', false);
+  PersistentStorage.PersistProp('ohBiliSessdata', '');
+  PersistentStorage.PersistProp('ohBiliBiliJct', '');
+  PersistentStorage.PersistProp('ohBiliDedeUserId', '');
+  PersistentStorage.PersistProp('ohBiliRefreshToken', '');
+  PersistentStorage.PersistProp('ohBiliUname', '');
+  PersistentStorage.PersistProp('ohBiliFace', '');
+
+  // 设备 Cookie（对齐网页版：指纹接口获取 buvid3/buvid4）
+  PersistentStorage.PersistProp('ohBiliBuvid3', '');
+  PersistentStorage.PersistProp('ohBiliBuvid4', '');
 }

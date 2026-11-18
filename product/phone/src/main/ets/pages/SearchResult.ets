@@ -27,17 +27,31 @@ struct SearchResultPage {
   private scroller: Scroller = new Scroller();
   @State pn: number = 1;
   @State isLoading: boolean = false;
+  @State isRateLimited: boolean = false;
 
   aboutToAppear() {
     BLog.i("SearchResultPage keyword:" + this.keyword);
     this.isLoading = true;
     ApiManager.getInstance().requestSearch(this.keyword, this.pn).then(result => {
       this.isLoading = false;
+      this.updateSearchStatus();
+    }).catch(() => {
+      BLog.e("SearchResultPage search rejected, show status instead of infinite loading");
+      this.isLoading = false;
+      this.updateSearchStatus();
     })
   }
 
   aboutToDisappear() {
     DataSourceManager.getSearchSource().setData([]);
+  }
+
+  /**
+   * 请求结束后同步风控状态（ApiManager.lastSearchBlocked 由 requestSearch 维护），
+   * 供空态区分"无结果"与"请求过于频繁"。
+   */
+  private updateSearchStatus() {
+    this.isRateLimited = ApiManager.getInstance().lastSearchBlocked;
   }
 
   build() {
@@ -61,6 +75,11 @@ struct SearchResultPage {
             return new Promise<string>((resolve, reject) => {
               this.pn = 1;
               ApiManager.getInstance().requestSearch(this.keyword, this.pn).then((videos: boolean) => {
+                this.updateSearchStatus();
+                resolve('');
+              }).catch(() => {
+                BLog.e("SearchResultPage onRefresh rejected");
+                this.updateSearchStatus();
                 resolve('');
               });
             });
@@ -70,6 +89,11 @@ struct SearchResultPage {
             return new Promise<string>((resolve, reject) => {
               this.pn++;
               ApiManager.getInstance().requestSearch(this.keyword, this.pn).then((videos: boolean) => {
+                this.updateSearchStatus();
+                resolve('');
+              }).catch(() => {
+                BLog.e("SearchResultPage onLoadMore rejected");
+                this.updateSearchStatus();
                 resolve('');
               });
             });
@@ -84,6 +108,22 @@ struct SearchResultPage {
   @Builder
   private getListView() {
     List({ scroller: this.scroller }) {
+      if (DataSourceManager.getSearchSource().totalCount() == 0) {
+        // 空态/风控区分提示，替代空白列表（保留下拉刷新可重试）
+        ListItem() {
+          Column({ space: 8 }) {
+            Text(this.isRateLimited ? '请求过于频繁，请稍后再试' : '无结果')
+              .fontSize(15)
+              .fontColor('#ff999999')
+            Text('下拉刷新重试')
+              .fontSize(12)
+              .fontColor('#ffbbbbbb')
+          }
+          .width('100%')
+          .height(240)
+          .justifyContent(FlexAlign.Center)
+        }
+      }
       LazyForEach(DataSourceManager.getSearchSource(), (item: SearchVideo, index: number) => {
         ListItem() {
           PopularItemView({ item: SearchVideoToBaseVideo(item) })

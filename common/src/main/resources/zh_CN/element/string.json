@@ -101,6 +101,10 @@
       "value": "点击登录"
     },
     {
+      "name": "logged_in",
+      "value": "已登录"
+    },
+    {
       "name": "attention",
       "value": "关注"
     },

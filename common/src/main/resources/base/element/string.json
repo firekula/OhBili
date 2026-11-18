@@ -101,6 +101,10 @@
       "value": "Click login"
     },
     {
+      "name": "logged_in",
+      "value": "Logged in"
+    },
+    {
       "name": "attention",
       "value": "Attention"
     },

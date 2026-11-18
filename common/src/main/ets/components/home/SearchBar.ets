@@ -12,39 +12,51 @@
 
 import router from '@ohos.router';
 import promptAction from '@ohos.promptAction'
+import { BLog } from '../../utils/BLog';
 
 @Component
 export struct HomeSearchBar {
   private isShowHeatImg: boolean = true
   private barHeight: Length = 50
-  @StorageLink("isShowPage") isShowPage: boolean = true;
   @StorageLink("searchDefault") searchDefault: string = "";
+  @StorageLink("isOhBiliLoggedIn") isLoggedIn: boolean = false;
+  @StorageLink("ohBiliFace") userFace: string = "";
 
   build() {
     Row() {
       Image($r('app.media.ic_home_search'))
         .width(24)
         .height(24)
+      // 假搜索框：不获焦（避免主页弹输入法及返回时焦点恢复），点击跳转独立搜索页。
+      // 此前用 onFocus 导航，从搜索页返回主页时焦点恢复会再次触发 onFocus 导致无法返回主页
       TextInput({ placeholder: this.searchDefault })
-        .focusable(this.isShowPage)
+        .focusable(false)
         .layoutWeight(1)
         .backgroundColor(Color.Transparent)
-        .onFocus(() => {
+        .onClick(() => {
           router.pushUrl({ url: 'pages/Search', params: {
             defaultKeyword: this.searchDefault
           } });
         })
       if (this.isShowHeatImg) {
-        Image($r('app.media.ic_live_no_face_dark'))
-          .width(36)
-          .height(36)
-          .borderRadius(12)
-          .onClick(() => {
-            promptAction.showToast({
-              message: '登录功能暂未实现',
-              duration: 2000
-            });
-          })
+        if (this.isLoggedIn && this.userFace !== '') {
+          // 已登录：显示用户头像（加载中/失败回退占位图）
+          Image(this.userFace)
+            .width(36)
+            .height(36)
+            .borderRadius(12)
+            .alt($r('app.media.ic_live_no_face_dark'))
+        } else {
+          Image($r('app.media.ic_live_no_face_dark'))
+            .width(36)
+            .height(36)
+            .borderRadius(12)
+            .onClick(() => {
+              // 未登录点击头像进入扫码登录页（仅 phone Home 渲染本头像，
+              // tablet Home 传 isShowHeatImg=false 不渲染）
+              router.pushUrl({ url: 'pages/Login' });
+            })
+        }
       }
     }
     .width('100%')
@@ -79,8 +91,14 @@ export struct SearchBar {
         })
         .height(40)
         .backgroundColor(Color.White)
-        .onSubmit((enterKey: EnterKeyType) => {
-          this.searchKeyword();
+        .onSubmit((enterKey: EnterKeyType, event: SubmitEvent) => {
+          // 提交事件文本为输入法上屏的权威值（API 12+ SubmitEvent.text），
+          // 组合输入场景下与 onChange 同步值可能存在时序差异，事件文本优先、this.keyword 兜底
+          let submitText: string = '';
+          if (event != null && event.text != null) {
+            submitText = event.text;
+          }
+          this.searchKeyword(submitText);
         })
       Text($r('app.string.search')).padding(12)
         .onClick(() => {
@@ -90,9 +108,18 @@ export struct SearchBar {
     .padding({ left: 8, right: 8 })
   }
 
-  private searchKeyword() {
-    if (this.keyword != null && this.keyword as string && (this.keyword as string) != "") {
-      router.pushUrl({ url: "pages/SearchResult", params: { keyword: this.keyword } })
+  private searchKeyword(submitText?: string) {
+    let keywordText: string = '';
+    if (submitText != null && submitText !== '') {
+      keywordText = submitText;
+      // 回车提交文本与 onChange 同步值对齐，保证回车/按钮两路一致
+      this.keyword = submitText;
+    } else if (this.keyword != null && this.keyword as string && (this.keyword as string) != "") {
+      keywordText = this.keyword as string;
+    }
+    BLog.i("SearchBar searchKeyword: " + keywordText);
+    if (keywordText != "") {
+      router.pushUrl({ url: "pages/SearchResult", params: { keyword: keywordText } })
     } else if (this.placeholder != null && this.placeholder as string && this.placeholder != $r("app.string.hint_text")) {
       router.pushUrl({ url: "pages/SearchResult", params: { keyword: this.placeholder }})
     } else {

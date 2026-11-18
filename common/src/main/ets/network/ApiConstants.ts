@@ -25,4 +25,7 @@ export class ApiConstants {
     static loginBase: string = "https://passport.bilibili.com";
 
     static itemNum: number = 24;
+
+    /** 热门列表分页大小（对齐 B 站网页版热门页） */
+    static popularPageSize: number = 20;
 }
