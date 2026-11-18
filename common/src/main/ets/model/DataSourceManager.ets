@@ -16,6 +16,9 @@ import { SearchDataSource } from './SearchDataSource';
 import { BasicDataSource } from './BasicDataSource';
 import { DynamicItem } from './response/DynamicFeedResponse';
 import { SpaceArcItem } from './response/SpaceArcSearchResponse';
+import { HistoryItem } from './response/HistoryResponse';
+import { FavMedia } from './response/FavResourceResponse';
+import { WatchLaterItem } from './response/WatchLaterResponse';
 
 /**
  * 动态流数据源（LazyForEach 消费）
@@ -89,6 +92,135 @@ export class SpaceArcDataSource extends BasicDataSource {
   }
 }
 
+/**
+ * 历史记录数据源（云端历史列表，LazyForEach 消费）
+ */
+export class HistoryDataSource extends BasicDataSource {
+  private dataArray: HistoryItem[] = [];
+
+  public totalCount(): number {
+    return this.dataArray.length;
+  }
+
+  public getData(index: number): any {
+    return this.dataArray[index];
+  }
+
+  public getAllData(): HistoryItem[] {
+    return this.dataArray;
+  }
+
+  public setData(data: HistoryItem[]): void {
+    this.dataArray.splice(0);
+    this.addAllData(data);
+  }
+
+  public addAllData(data: HistoryItem[]): void {
+    data.forEach(item => {
+      this.dataArray.push(item);
+    })
+    this.notifyDataReload();
+  }
+
+  public pushData(data: HistoryItem): void {
+    this.dataArray.push(data);
+    this.notifyDataAdd(this.dataArray.length - 1);
+  }
+
+  public deleteData(index: number): void {
+    if (index >= 0 && index < this.dataArray.length) {
+      this.dataArray.splice(index, 1);
+      this.notifyDataDelete(index);
+    }
+  }
+}
+
+/**
+ * 收藏夹内容数据源（按收藏夹 media_id 实例隔离）
+ */
+export class FavMediaDataSource extends BasicDataSource {
+  private dataArray: FavMedia[] = [];
+
+  public totalCount(): number {
+    return this.dataArray.length;
+  }
+
+  public getData(index: number): any {
+    return this.dataArray[index];
+  }
+
+  public getAllData(): FavMedia[] {
+    return this.dataArray;
+  }
+
+  public setData(data: FavMedia[]): void {
+    this.dataArray.splice(0);
+    this.addAllData(data);
+  }
+
+  public addAllData(data: FavMedia[]): void {
+    data.forEach(item => {
+      this.dataArray.push(item);
+    })
+    this.notifyDataReload();
+  }
+
+  public pushData(data: FavMedia): void {
+    this.dataArray.push(data);
+    this.notifyDataAdd(this.dataArray.length - 1);
+  }
+
+  public deleteData(index: number): void {
+    if (index >= 0 && index < this.dataArray.length) {
+      this.dataArray.splice(index, 1);
+      this.notifyDataDelete(index);
+    }
+  }
+}
+
+/**
+ * 稍后再看数据源（全量单页，LazyForEach 消费）
+ */
+export class WatchLaterDataSource extends BasicDataSource {
+  private dataArray: WatchLaterItem[] = [];
+
+  public totalCount(): number {
+    return this.dataArray.length;
+  }
+
+  public getData(index: number): any {
+    return this.dataArray[index];
+  }
+
+  public getAllData(): WatchLaterItem[] {
+    return this.dataArray;
+  }
+
+  public setData(data: WatchLaterItem[]): void {
+    this.dataArray.splice(0);
+    this.addAllData(data);
+  }
+
+  public addAllData(data: WatchLaterItem[]): void {
+    data.forEach(item => {
+      this.dataArray.push(item);
+    })
+    this.notifyDataReload();
+  }
+
+  public pushData(data: WatchLaterItem): void {
+    this.dataArray.push(data);
+    this.notifyDataAdd(this.dataArray.length - 1);
+  }
+
+  public deleteData(index: number): void {
+    if (index >= 0 && index < this.dataArray.length) {
+      this.dataArray.splice(index, 1);
+      this.notifyDataDelete(index);
+    }
+  }
+}
+
 export class DataSourceManager {
   public static initData() {
     globalThis.recommendSource = new VideoDataSource();
@@ -99,6 +231,9 @@ export class DataSourceManager {
     globalThis.searchSource = new SearchDataSource();
     globalThis.dynamicSource = new DynamicDataSource();
     globalThis.spaceArcMapSource = new Map<string, SpaceArcDataSource>();
+    globalThis.historySource = new HistoryDataSource();
+    globalThis.favMediaMapSource = new Map<string, FavMediaDataSource>();
+    globalThis.watchLaterSource = new WatchLaterDataSource();
   }
 
   public static getRecommendSource(): VideoDataSource {
@@ -199,5 +334,44 @@ export class DataSourceManager {
     if (globalThis.spaceArcMapSource != undefined) {
       globalThis.spaceArcMapSource.delete(mid);
     }
+  }
+
+  public static getHistorySource(): HistoryDataSource {
+    if (globalThis.historySource != undefined) {
+      return globalThis.historySource;
+    }
+    return new HistoryDataSource();
+  }
+
+  /**
+   * 获取指定收藏夹的内容数据源：不存在时自动创建并缓存（按 media_id 实例隔离）
+   */
+  public static getFavMediaSource(mediaId: string): FavMediaDataSource {
+    if (globalThis.favMediaMapSource == undefined) {
+      globalThis.favMediaMapSource = new Map<string, FavMediaDataSource>();
+    }
+    let mapSource: Map<string, FavMediaDataSource> = globalThis.favMediaMapSource;
+    if (mapSource.has(mediaId)) {
+      return mapSource.get(mediaId);
+    }
+    let source: FavMediaDataSource = new FavMediaDataSource();
+    mapSource.set(mediaId, source);
+    return source;
+  }
+
+  /**
+   * 清理指定收藏夹的内容数据源（收藏夹内容页退出时调用）
+   */
+  public static deleteFavMediaSource(mediaId: string): void {
+    if (globalThis.favMediaMapSource != undefined) {
+      globalThis.favMediaMapSource.delete(mediaId);
+    }
+  }
+
+  public static getWatchLaterSource(): WatchLaterDataSource {
+    if (globalThis.watchLaterSource != undefined) {
+      return globalThis.watchLaterSource;
+    }
+    return new WatchLaterDataSource();
   }
 }

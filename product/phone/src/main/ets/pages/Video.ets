@@ -28,6 +28,10 @@ import { PlayerView } from '@ohos/common';
 @Component
 struct VideoPlayer {
   @State vInfo: BaseVideo = router.getParams()['vInfo']
+  /** 续播起始秒数（历史记录跳入时传入，0=从头播） */
+  private startAt: number = router.getParams()['startAt'] ?? 0;
+  /** 本地视频文件绝对路径（离线缓存跳入时传入，空=在线播放） */
+  private localPath: string = router.getParams()['localPath'] ?? '';
   @StorageLink('isPortrait') @Watch('onPortraitUpdated') isPortrait: boolean = true;
   @State currentIndex: number = 0;
   @StorageLink('replyCount') @Watch('onCountUpdated') replyCount: number = 0;
@@ -144,7 +148,8 @@ struct VideoPlayer {
 
   build() {
     Column() {
-      PlayerView({ cid: this.vInfo.cid, bvid: this.vInfo.bvid, pageState: $pageState })
+      PlayerView({ cid: this.vInfo.cid, bvid: this.vInfo.bvid, pageState: $pageState,
+        startAt: this.startAt, localPath: this.localPath })
       if (this.isPortrait && !this.playerFullScreen) {
         if (this.replyItem != null) {
           Column() {

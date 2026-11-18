@@ -35,7 +35,7 @@ import { RegionResponse } from '../model/response/RegionResponse';
 import { RelatedResponse } from '../model/response/RelatedResponse';
 import { ReplyDetailResponse } from '../model/response/ReplyDetailResponse';
 import { ReplyResponse } from '../model/response/ReplyResponse';
-import { StringResponse } from '../model/response/Response';
+import { EmptyResponse, StringResponse } from '../model/response/Response';
 import { ApiConstants } from './ApiConstants';
 import { NavResponse } from '../model/response/NavResponse';
 import { QrCodeGenerateResponse } from '../model/response/QrCodeGenerateResponse';
@@ -51,6 +51,10 @@ import { DynamicFeedResponse } from '../model/response/DynamicFeedResponse';
 import { SpaceAccInfoResponse } from '../model/response/SpaceAccInfoResponse';
 import { SpaceArcSearchResponse } from '../model/response/SpaceArcSearchResponse';
 import { SeriesArchivesResponse } from '../model/response/SeriesArchivesResponse';
+import { HistoryResponse } from '../model/response/HistoryResponse';
+import { FavFolderResponse } from '../model/response/FavFolderResponse';
+import { FavResourceResponse } from '../model/response/FavResourceResponse';
+import { WatchLaterResponse } from '../model/response/WatchLaterResponse';
 
 @BasePath("/")
 export class DataService extends BaseService {
@@ -422,5 +426,170 @@ export class DataService extends BaseService {
                           @Query('pn') pn: number):
     Promise<Response<SeriesArchivesResponse>> {
     return <Response<SeriesArchivesResponse>>{};
+  }
+
+  /**
+   * 获取云端历史记录（Cookie 鉴权，max/view_at/business 游标分页）
+   * 2026 现行 web 版接口（网页历史页 app bundle 实证）；
+   * 旧端点 x/v2/history 已对 web 会话封闭（-108 应用不存在或者被封禁）。
+   * 风控规避：与网页版浏览器请求对齐（该接口网页版不带 WBI 签名）。
+   * @param @Header('Cookie') cookie Cookie 请求头（登录 Cookie）
+   * @param max 分页游标：上一页末条 view_at（首页 0）
+   * @param viewAt 分页游标：同 max（首页 0）
+   * @param business 上一页末条的 history.business（首页空串）
+   */
+  @GET("x/web-interface/history/cursor")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async getHistory(@Header('Cookie') cookie: string,
+                   @Query('max') max: number,
+                   @Query('view_at') viewAt: number,
+                   @Query('business') business: string):
+    Promise<Response<HistoryResponse>> {
+    return <Response<HistoryResponse>>{};
+  }
+
+  /**
+   * 删除单条历史记录（POST，csrf 鉴权）
+   * 端点勘误：旧端点 x/v2/history/del 已对 web 会话封闭（-108 应用不存在或被封禁），
+   * 2026 现行 web 版为 x/v2/history/delete（来源：bilibili.com/account/history 主 bundle 实证）
+   * @param kid 条目标识：{business}_{kid}（如 archive_170001，business 取条目 history.business）
+   */
+  @POST("x/v2/history/delete")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async deleteHistory(@Header('Cookie') cookie: string,
+                      @Query('kid') kid: string,
+                      @Query('csrf') csrf: string):
+    Promise<Response<EmptyResponse>> {
+    return <Response<EmptyResponse>>{};
+  }
+
+  /**
+   * 清空全部历史记录（POST，csrf 鉴权，不可恢复）
+   */
+  @POST("x/v2/history/clear")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async clearHistory(@Header('Cookie') cookie: string,
+                     @Query('csrf') csrf: string):
+    Promise<Response<EmptyResponse>> {
+    return <Response<EmptyResponse>>{};
+  }
+
+  /**
+   * 获取收藏夹列表（含默认夹，Cookie 鉴权）
+   * 携带 rid+type 时每夹返回 fav_state 标记该视频是否已收藏于该夹
+   * @param upMid 用户 mid
+   * @param rid 视频 aid（视频页收藏入口传入以取 fav_state，其余场景 0）
+   * @param type 资源类型（2=视频）
+   */
+  @GET("x/v3/fav/folder/created/list-all")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async getFavFolders(@Header('Cookie') cookie: string,
+                      @Query('up_mid') upMid: number,
+                      @Query('rid') rid: number,
+                      @Query('type') type: number):
+    Promise<Response<FavFolderResponse>> {
+    return <Response<FavFolderResponse>>{};
+  }
+
+  /**
+   * 获取收藏夹内容列表（pn/ps 分页，Cookie 鉴权）
+   * @param mediaId 收藏夹 media_id
+   * @param pn 页码
+   * @param ps 每页项数
+   * @param keyword 关键字过滤（空串 = 全部）
+   * @param order 排序（mtime 按收藏时间）
+   * @param type 资源类型（0=全部）
+   * @param tid 分区 tid（0=全部）
+   * @param platform 平台（web）
+   */
+  @GET("x/v3/fav/resource/list")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async getFavResources(@Header('Cookie') cookie: string,
+                        @Query('media_id') mediaId: number,
+                        @Query('pn') pn: number,
+                        @Query('ps') ps: number,
+                        @Query('keyword') keyword: string,
+                        @Query('order') order: string,
+                        @Query('type') type: number,
+                        @Query('tid') tid: number,
+                        @Query('platform') platform: string):
+    Promise<Response<FavResourceResponse>> {
+    return <Response<FavResourceResponse>>{};
+  }
+
+  /**
+   * 收藏/取消收藏（POST，csrf 鉴权）：将视频加入/移出多个收藏夹
+   * @param rid 视频 aid
+   * @param addMediaIds 加入的收藏夹 media_id 逗号分隔（空串 = 无）
+   * @param delMediaIds 移出的收藏夹 media_id 逗号分隔（空串 = 无）
+   */
+  @POST("x/v3/fav/resource/deal")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async favDeal(@Header('Cookie') cookie: string,
+                @Query('rid') rid: number,
+                @Query('type') type: number,
+                @Query('add_media_ids') addMediaIds: string,
+                @Query('del_media_ids') delMediaIds: string,
+                @Query('csrf') csrf: string):
+    Promise<Response<EmptyResponse>> {
+    return <Response<EmptyResponse>>{};
+  }
+
+  /**
+   * 获取稍后再看列表（Cookie 鉴权，全量单页返回，上限约 300 条）
+   */
+  @GET("x/v2/history/toview/web")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async getWatchLater(@Header('Cookie') cookie: string):
+    Promise<Response<WatchLaterResponse>> {
+    return <Response<WatchLaterResponse>>{};
+  }
+
+  /**
+   * 添加视频到稍后再看（POST，csrf 鉴权）
+   * @param aid 视频 aid
+   */
+  @POST("x/v2/history/toview/add")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async addWatchLater(@Header('Cookie') cookie: string,
+                      @Query('aid') aid: number,
+                      @Query('csrf') csrf: string):
+    Promise<Response<EmptyResponse>> {
+    return <Response<EmptyResponse>>{};
+  }
+
+  /**
+   * 从稍后再看移除视频（POST，csrf 鉴权）
+   * @param aid 视频 aid
+   */
+  @POST("x/v2/history/toview/del")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async removeWatchLater(@Header('Cookie') cookie: string,
+                         @Query('aid') aid: number,
+                         @Query('csrf') csrf: string):
+    Promise<Response<EmptyResponse>> {
+    return <Response<EmptyResponse>>{};
+  }
+
+  /**
+   * 获取指定清晰度的播放地址（离线缓存选档用，扩展自 getPlayUrl）
+   * platform=html5&high_quality=1&fnval=0 返回 mp4 durl（含 size）与 accept_quality 档位表；
+   * 携带登录 Cookie 可解锁更高清晰度档位
+   * @param qn 清晰度档位值（16/32/64/80 等）
+   * @param platform 平台（html5）
+   * @param highQuality 高清标记（1）
+   * @param fnval 格式标记（0=durl）
+   */
+  @GET("x/player/playurl")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async getPlayUrlWithQn(@Header('Cookie') cookie: string,
+                         @Query('bvid') bvid: string,
+                         @Query('cid') cid: number,
+                         @Query('qn') qn: number,
+                         @Query('platform') platform: string,
+                         @Query('high_quality') highQuality: number,
+                         @Query('fnval') fnval: number):
+    Promise<Response<PlayUrlResponse>> {
+    return <Response<PlayUrlResponse>>{};
   }
 }

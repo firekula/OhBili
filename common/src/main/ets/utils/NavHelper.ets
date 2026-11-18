@@ -48,4 +48,69 @@ export class NavHelper {
       BLog.e("NavHelper goGallery err=" + error.code + ", msg=" + error.message);
     });
   }
+
+  /**
+   * 进入登录页（仅 phone 生效）
+   */
+  static goLogin(): void {
+    if (deviceInfo.deviceType !== 'phone') {
+      BLog.i("NavHelper goLogin skip, deviceType=" + deviceInfo.deviceType);
+      return;
+    }
+    router.pushUrl({ url: 'pages/Login' }).catch((error: BusinessError) => {
+      BLog.e("NavHelper goLogin err=" + error.code + ", msg=" + error.message);
+    });
+  }
+
+  /**
+   * 进入历史记录页（仅 phone 生效）
+   */
+  static goHistory(): void {
+    if (deviceInfo.deviceType !== 'phone') {
+      BLog.i("NavHelper goHistory skip, deviceType=" + deviceInfo.deviceType);
+      return;
+    }
+    router.pushUrl({ url: 'pages/History' }).catch((error: BusinessError) => {
+      BLog.e("NavHelper goHistory err=" + error.code + ", msg=" + error.message);
+    });
+  }
+
+  /**
+   * 进入我的收藏页（收藏夹列表，仅 phone 生效）
+   */
+  static goFavorite(): void {
+    if (deviceInfo.deviceType !== 'phone') {
+      BLog.i("NavHelper goFavorite skip, deviceType=" + deviceInfo.deviceType);
+      return;
+    }
+    router.pushUrl({ url: 'pages/Favorite' }).catch((error: BusinessError) => {
+      BLog.e("NavHelper goFavorite err=" + error.code + ", msg=" + error.message);
+    });
+  }
+
+  /**
+   * 进入稍后再看页（仅 phone 生效）
+   */
+  static goWatchLater(): void {
+    if (deviceInfo.deviceType !== 'phone') {
+      BLog.i("NavHelper goWatchLater skip, deviceType=" + deviceInfo.deviceType);
+      return;
+    }
+    router.pushUrl({ url: 'pages/WatchLater' }).catch((error: BusinessError) => {
+      BLog.e("NavHelper goWatchLater err=" + error.code + ", msg=" + error.message);
+    });
+  }
+
+  /**
+   * 进入离线缓存管理页（仅 phone 生效）
+   */
+  static goOfflineCache(): void {
+    if (deviceInfo.deviceType !== 'phone') {
+      BLog.i("NavHelper goOfflineCache skip, deviceType=" + deviceInfo.deviceType);
+      return;
+    }
+    router.pushUrl({ url: 'pages/OfflineCache' }).catch((error: BusinessError) => {
+      BLog.e("NavHelper goOfflineCache err=" + error.code + ", msg=" + error.message);
+    });
+  }
 }

@@ -46,6 +46,8 @@ export interface StringResponse extends BaseResponse<string> {
 export interface BaseVideo {
     cid: number
     bvid?: string
+    /** 视频 aid（收藏/稍后再看写操作用；部分入口缺失时由 VideoActionRow 经 archive/stat 兜底获取） */
+    aid?: number
     title?: string
     desc?: string
     pic?: string
@@ -56,6 +58,8 @@ export interface BaseVideo {
 }
 
 export interface Stat {
+    /** 视频 aid（archive/stat 接口返回） */
+    aid?: number
     view: number
     like: number
     danmaku: number

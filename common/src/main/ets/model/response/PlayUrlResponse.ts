@@ -22,6 +22,12 @@ export interface PlayUrl {
     seek_param: string
     seek_type: string
     durl: PlayUrlDurl[]
+    /** 可用清晰度档位值列表（如 16/32/64/80），缓存选档使用 */
+    accept_quality?: number[]
+    /** 可用清晰度档位描述列表（与 accept_quality 下标对应） */
+    accept_description?: string[]
+    /** 视频总时长（毫秒） */
+    timelength?: number
 }
 
 export interface PlayUrlDurl {

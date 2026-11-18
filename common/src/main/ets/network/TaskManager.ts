@@ -26,7 +26,7 @@ import { SearchResponse } from '../model/response/SearchResponse';
 import { VideoPartsResponse } from '../model/response/VideoPartsResponse';
 import { SearchDefaultResponse } from '../model/response/SearchDefaultResponse';
 import { ReplyDetailResponse } from '../model/response/ReplyDetailResponse';
-import { ApiResponse, StringResponse } from '../model/response/Response';
+import { ApiResponse, EmptyResponse, StringResponse } from '../model/response/Response';
 import { ArchiveStatResponse } from '../model/response/ArchiveStatResponse';
 import { CountryListResponse } from '../model/response/GenericCountryListResponse';
 import { SendSmsCaptchaResponse } from '../model/response/SendSmsCaptchaResponse';
@@ -41,6 +41,10 @@ import { DynamicFeedResponse } from '../model/response/DynamicFeedResponse';
 import { SpaceAccInfoResponse } from '../model/response/SpaceAccInfoResponse';
 import { SpaceArcSearchResponse } from '../model/response/SpaceArcSearchResponse';
 import { SeriesArchivesResponse } from '../model/response/SeriesArchivesResponse';
+import { HistoryResponse } from '../model/response/HistoryResponse';
+import { FavFolderResponse } from '../model/response/FavFolderResponse';
+import { FavResourceResponse } from '../model/response/FavResourceResponse';
+import { WatchLaterResponse } from '../model/response/WatchLaterResponse';
 
 export class TaskManager {
   public static getInstance(): TaskManager {
@@ -225,6 +229,74 @@ export class TaskManager {
     Promise<ApiResponse<SeriesArchivesResponse>> {
     var task = new taskPool.Task(requestSeriesArchivesTask, mid, pn, ps);
     var response = await taskPool.execute(task) as ApiResponse<SeriesArchivesResponse>;
+    return response;
+  }
+
+  async requestHistory(cookie: string, max: number, viewAt: number,
+                       business: string):
+    Promise<ApiResponse<HistoryResponse>> {
+    var task = new taskPool.Task(requestHistoryTask, cookie, max, viewAt, business);
+    var response = await taskPool.execute(task) as ApiResponse<HistoryResponse>;
+    return response;
+  }
+
+  async deleteHistory(cookie: string, kid: string, csrf: string): Promise<ApiResponse<EmptyResponse>> {
+    var task = new taskPool.Task(deleteHistoryTask, cookie, kid, csrf);
+    var response = await taskPool.execute(task) as ApiResponse<EmptyResponse>;
+    return response;
+  }
+
+  async clearHistory(cookie: string, csrf: string): Promise<ApiResponse<EmptyResponse>> {
+    var task = new taskPool.Task(clearHistoryTask, cookie, csrf);
+    var response = await taskPool.execute(task) as ApiResponse<EmptyResponse>;
+    return response;
+  }
+
+  async requestFavFolders(cookie: string, upMid: number, rid: number,
+                          type: number): Promise<ApiResponse<FavFolderResponse>> {
+    var task = new taskPool.Task(requestFavFoldersTask, cookie, upMid, rid, type);
+    var response = await taskPool.execute(task) as ApiResponse<FavFolderResponse>;
+    return response;
+  }
+
+  async requestFavResources(cookie: string, mediaId: number, pn: number, ps: number,
+                            keyword: string, order: string, type: number, tid: number,
+                            platform: string): Promise<ApiResponse<FavResourceResponse>> {
+    var task = new taskPool.Task(requestFavResourcesTask, cookie, mediaId, pn, ps,
+      keyword, order, type, tid, platform);
+    var response = await taskPool.execute(task) as ApiResponse<FavResourceResponse>;
+    return response;
+  }
+
+  async favDeal(cookie: string, rid: number, type: number, addMediaIds: string,
+                delMediaIds: string, csrf: string): Promise<ApiResponse<EmptyResponse>> {
+    var task = new taskPool.Task(favDealTask, cookie, rid, type, addMediaIds, delMediaIds, csrf);
+    var response = await taskPool.execute(task) as ApiResponse<EmptyResponse>;
+    return response;
+  }
+
+  async requestWatchLater(cookie: string): Promise<ApiResponse<WatchLaterResponse>> {
+    var task = new taskPool.Task(requestWatchLaterTask, cookie);
+    var response = await taskPool.execute(task) as ApiResponse<WatchLaterResponse>;
+    return response;
+  }
+
+  async addWatchLater(cookie: string, aid: number, csrf: string): Promise<ApiResponse<EmptyResponse>> {
+    var task = new taskPool.Task(addWatchLaterTask, cookie, aid, csrf);
+    var response = await taskPool.execute(task) as ApiResponse<EmptyResponse>;
+    return response;
+  }
+
+  async removeWatchLater(cookie: string, aid: number, csrf: string): Promise<ApiResponse<EmptyResponse>> {
+    var task = new taskPool.Task(removeWatchLaterTask, cookie, aid, csrf);
+    var response = await taskPool.execute(task) as ApiResponse<EmptyResponse>;
+    return response;
+  }
+
+  async requestPlayUrlWithQn(cookie: string, bvid: string, cid: number,
+                             qn: number): Promise<ApiResponse<PlayUrlResponse>> {
+    var task = new taskPool.Task(requestPlayUrlWithQnTask, cookie, bvid, cid, qn);
+    var response = await taskPool.execute(task) as ApiResponse<PlayUrlResponse>;
     return response;
   }
 }
@@ -804,6 +876,223 @@ async function requestSeriesArchivesTask(mid: number, pn: number, ps: number):
       .setEndpoint(ApiConstants.apiBase)
       .build(DataService);
     let resp: Response<SeriesArchivesResponse> = await dataService.getSeriesArchives(mid, '', ps, pn);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestHistoryTask(cookie: string, max: number, viewAt: number,
+                                  business: string):
+  Promise<ApiResponse<HistoryResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: HistoryResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<HistoryResponse> = await dataService.getHistory(cookie, max, viewAt,
+      business);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function deleteHistoryTask(cookie: string, kid: string, csrf: string):
+  Promise<ApiResponse<EmptyResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: EmptyResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<EmptyResponse> = await dataService.deleteHistory(cookie, kid, csrf);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function clearHistoryTask(cookie: string, csrf: string):
+  Promise<ApiResponse<EmptyResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: EmptyResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<EmptyResponse> = await dataService.clearHistory(cookie, csrf);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestFavFoldersTask(cookie: string, upMid: number, rid: number,
+                                     type: number): Promise<ApiResponse<FavFolderResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: FavFolderResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<FavFolderResponse> = await dataService.getFavFolders(cookie, upMid,
+      rid, type);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestFavResourcesTask(cookie: string, mediaId: number, pn: number, ps: number,
+                                       keyword: string, order: string, type: number, tid: number,
+                                       platform: string): Promise<ApiResponse<FavResourceResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: FavResourceResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<FavResourceResponse> = await dataService.getFavResources(cookie, mediaId,
+      pn, ps, keyword, order, type, tid, platform);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function favDealTask(cookie: string, rid: number, type: number, addMediaIds: string,
+                           delMediaIds: string, csrf: string): Promise<ApiResponse<EmptyResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: EmptyResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<EmptyResponse> = await dataService.favDeal(cookie, rid, type,
+      addMediaIds, delMediaIds, csrf);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestWatchLaterTask(cookie: string): Promise<ApiResponse<WatchLaterResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: WatchLaterResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<WatchLaterResponse> = await dataService.getWatchLater(cookie);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function addWatchLaterTask(cookie: string, aid: number, csrf: string):
+  Promise<ApiResponse<EmptyResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: EmptyResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<EmptyResponse> = await dataService.addWatchLater(cookie, aid, csrf);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function removeWatchLaterTask(cookie: string, aid: number, csrf: string):
+  Promise<ApiResponse<EmptyResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: EmptyResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<EmptyResponse> = await dataService.removeWatchLater(cookie, aid, csrf);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestPlayUrlWithQnTask(cookie: string, bvid: string, cid: number,
+                                        qn: number): Promise<ApiResponse<PlayUrlResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: PlayUrlResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    // platform=html5&high_quality=1&fnval=0：返回 mp4 durl（含 size）+ accept_quality 档位表
+    let resp: Response<PlayUrlResponse> = await dataService.getPlayUrlWithQn(cookie, bvid, cid,
+      qn, 'html5', 1, 0);
     code = resp.code();
     message = resp.message();
     result = resp.result;

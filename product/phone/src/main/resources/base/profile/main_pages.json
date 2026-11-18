@@ -12,6 +12,11 @@
     "pages/LogDetail",
     "pages/Login",
     "pages/UserSpace",
-    "pages/Gallery"
+    "pages/Gallery",
+    "pages/History",
+    "pages/Favorite",
+    "pages/FavDetail",
+    "pages/WatchLater",
+    "pages/OfflineCache"
   ]
 }

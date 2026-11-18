@@ -11,7 +11,8 @@ export { DanmakuParser } from './src/main/ets/model/proto/DanmakuParser'
 export { ProtoSource } from './src/main/ets/model/proto/ProtoSource'
 
 export { BasicDataSource } from './src/main/ets/model/BasicDataSource'
-export { DataSourceManager, DynamicDataSource, SpaceArcDataSource } from './src/main/ets/model/DataSourceManager'
+export { DataSourceManager, DynamicDataSource, SpaceArcDataSource, HistoryDataSource,
+  FavMediaDataSource, WatchLaterDataSource } from './src/main/ets/model/DataSourceManager'
 export { ReplyDataSource } from './src/main/ets/model/ReplyDataSource'
 export { SearchDataSource } from './src/main/ets/model/SearchDataSource'
 export { VideoDataSource } from './src/main/ets/model/VideoDataSource'
@@ -44,11 +45,20 @@ export { SpaceArcSearchResponse, SpaceArcData, SpaceArcList, SpaceArcPage, Space
   SpaceArcResult } from './src/main/ets/model/response/SpaceArcSearchResponse'
 export { SeriesArchivesResponse, SeriesArchivesData, SeriesArchiveItem, SeriesStat,
   SeriesOwner } from './src/main/ets/model/response/SeriesArchivesResponse'
+export { HistoryResponse, HistoryItem, HistoryEntry, HistoryResult,
+  isPlayableHistoryItem } from './src/main/ets/model/response/HistoryResponse'
+export { FavFolderResponse, FavFolderData, FavFolder } from './src/main/ets/model/response/FavFolderResponse'
+export { FavResourceResponse, FavResourceData, FavResourceInfo, FavMedia, FavUpper,
+  FavCntInfo, FavResourceResult, isFavMediaInvalid } from './src/main/ets/model/response/FavResourceResponse'
+export { WatchLaterResponse, WatchLaterData, WatchLaterItem, WatchLaterOwner,
+  WatchLaterResult, isWatchLaterItemInvalid } from './src/main/ets/model/response/WatchLaterResponse'
+export { CacheTask, CacheTaskStatus } from './src/main/ets/model/CacheTask'
 
 export { DataService } from './src/main/ets/network/Api'
 export { ApiConstants } from './src/main/ets/network/ApiConstants'
 export { ApiManager } from './src/main/ets/network/ApiManager'
 export { TaskManager } from './src/main/ets/network/TaskManager'
+export { DownloadManager } from './src/main/ets/utils/DownloadManager'
 
 export { OhNavBar } from './src/main/ets/components/base/OhNavBar'
 export { SettingRow } from './src/main/ets/components/base/SettingRow'
@@ -74,5 +84,6 @@ export { VideoOverview } from './src/main/ets/components/video/VideoOverview'
 export { VideoInfoView } from './src/main/ets/components/video/VideoRelated'
 export { VideoReply } from './src/main/ets/components/video/VideoReply'
 export { VideoTopBar } from './src/main/ets/components/video/VideoTopBar'
+export { VideoActionRow } from './src/main/ets/components/video/VideoActionRow'
 export { PlayerView } from './src/main/ets/components/video/Player'
 

@@ -13,6 +13,7 @@
 import { IPlayer } from './IPlayer';
 import { IPlayStatus } from './IPlayStatus';
 import media from '@ohos.multimedia.media';
+import fs from '@ohos.file.fs';
 import { BusinessError } from '@ohos.base';
 import { StringUtil } from '../utils/StringUtil';
 
@@ -24,6 +25,8 @@ export class AvPlayer extends IPlayer {
     private count: number = 0;
     private surfaceId: string; // surfaceID用于播放画面显示
     private isSeek: boolean = true; // 用于区分模式是否支持seek操作
+    /** 本地播放文件句柄（fdSrc 播放期间需保持打开，切换数据源时关闭上一个） */
+    private localFd: number = -1;
 
     public initPlay(context: object): Promise<void> {
         this.xController.setXComponentSurfaceSize({surfaceWidth:1920,surfaceHeight:1080});
@@ -53,6 +56,11 @@ export class AvPlayer extends IPlayer {
 
     public setDataSource(url: string, headers?:Map<string,string>) {
         this.isSeek = false;
+        if (url.startsWith('/')) {
+            // 本地文件：fs.open 取 fd 走 fdSrc 播放（AVPlayer.url 不支持沙箱绝对路径）
+            this.openLocalFile(url);
+            return;
+        }
         if (headers !== undefined && headers.size > 0) {
             // 系统播放器默认 HTTP 请求不携带自定义头，B站 CDN 校验 User-Agent/Referer，
             // 直接赋值 url 会得到 403（content-type: text/html 错误页 → 5400106）。
@@ -70,6 +78,34 @@ export class AvPlayer extends IPlayer {
             });
         } else {
             this.avPlayer.url = url;
+        }
+    }
+
+    /**
+     * 打开本地文件以 fdSrc 方式播放
+     */
+    private openLocalFile(path: string): void {
+        this.closeLocalFile();
+        try {
+            let file: fs.File = fs.openSync(path, fs.OpenMode.READ_ONLY);
+            this.localFd = file.fd;
+            this.avPlayer.fdSrc = { fd: file.fd };
+        } catch (error) {
+            console.error(`AvPlayer openLocalFile failed, path: ${path}, error: ${JSON.stringify(error)}`);
+        }
+    }
+
+    /**
+     * 关闭上一次本地播放的文件句柄（fdSrc 播放期间须保持打开）
+     */
+    private closeLocalFile(): void {
+        if (this.localFd >= 0) {
+            try {
+                fs.closeSync(this.localFd);
+            } catch (error) {
+                console.warn(`AvPlayer closeLocalFile failed: ${JSON.stringify(error)}`);
+            }
+            this.localFd = -1;
         }
     }
 

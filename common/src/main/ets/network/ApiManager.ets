@@ -40,6 +40,10 @@ import { DynamicFeedResult, DynamicItem } from '../model/response/DynamicFeedRes
 import { SpaceUserProfile } from '../model/response/SpaceAccInfoResponse';
 import { SpaceArcItem, SpaceArcResult } from '../model/response/SpaceArcSearchResponse';
 import { SeriesArchiveItem } from '../model/response/SeriesArchivesResponse';
+import { HistoryItem, HistoryResult } from '../model/response/HistoryResponse';
+import { FavFolderData } from '../model/response/FavFolderResponse';
+import { FavMedia, FavResourceResult } from '../model/response/FavResourceResponse';
+import { WatchLaterResult } from '../model/response/WatchLaterResponse';
 
 export class ApiManager {
   /** 最近一次搜索请求是否被风控（-412 等），供搜索结果页区分"无结果"与"请求过于频繁" */
@@ -127,7 +131,24 @@ export class ApiManager {
     return response.code != -1;
   }
 
-  async requestPlayUrl(bvid: string, cid: number): Promise<PlayUrlResponse> {
+  /**
+   * 获取播放地址：qn 缺省/为 0 时走原有匿名 playurl（保持既有播放链路不变）；
+   * 指定 qn 时走 platform=html5 扩展端点（携带登录 Cookie 解锁更高清晰度），
+   * 返回含 accept_quality/accept_description 档位表与 durl.size（离线缓存选档用）。
+   */
+  async requestPlayUrl(bvid: string, cid: number, qn?: number): Promise<PlayUrlResponse> {
+    if (qn != null && qn > 0) {
+      BLog.d(`requestPlayUrl bvid: ${bvid}, cid: ${cid}, qn: ${qn}`);
+      let cookie: string = LoginHelper.buildCookieHeader();
+      var qnResponse = await TaskManager.getInstance().requestPlayUrlWithQn(cookie, bvid, cid, qn);
+      if (qnResponse.code == -1) {
+        BLog.e("requestPlayUrl qn err=" + qnResponse.message);
+      }
+      if (qnResponse.result != null) {
+        BLog.d("requestPlayUrl qn result: " + JSON.stringify(qnResponse.result));
+      }
+      return qnResponse.result;
+    }
     BLog.d(`requestPlayUrl bvid: ${bvid}, cid: ${cid}`);
     var response = await TaskManager.getInstance().requestPlayUrl(bvid, cid);
     if (response.code == -1 ) {
@@ -646,5 +667,245 @@ export class ApiManager {
       description: ''
     };
     return arcItem;
+  }
+
+  /** 写操作 csrf（登录票据 bili_jct） */
+  private static getCsrf(): string {
+    return AppStorage.get<string>('ohBiliBiliJct') ?? '';
+  }
+
+  /**
+   * 拉取云端历史记录并写入 HistoryDataSource（max/view_at/business 游标分页）：
+   * pn==1 刷新清空重填（游标归零）；pn>1 以 DataSource 末条 view_at+business
+   * 作游标续拉（与响应 cursor 字段等值，服务端语义即末条游标）；
+   * 登录失效（业务码 -101）返回 loginExpired 标志，由页面引导重新登录。
+   */
+  async requestHistory(pn: number, ps: number): Promise<HistoryResult> {
+    BLog.d("requestHistory pn=" + pn + ", ps=" + ps);
+    // 历史为 gaia 风控敏感接口：仅携带登录 Cookie（新铸 buvid 无浏览历史，携带反而触发 -352 风控，同 requestSearch 先例）
+    let cookie: string = LoginHelper.buildLoginCookieHeader();
+    let max: number = 0;
+    let viewAt: number = 0;
+    let business: string = '';
+    if (pn > 1) {
+      let loaded: HistoryItem[] = DataSourceManager.getHistorySource().getAllData();
+      if (loaded.length > 0) {
+        let last: HistoryItem = loaded[loaded.length - 1];
+        viewAt = last.view_at ?? 0;
+        max = viewAt;
+        if (last.history != null) {
+          business = last.history.business ?? '';
+        }
+      }
+    }
+    // 2026 现行 web 版历史接口为 x/web-interface/history/cursor（网页版不带 WBI 签名）；
+    // 旧端点 x/v2/history 已对 web 会话封闭（-108 应用不存在或者被封禁）
+    BLog.i("requestHistory cursor, max=" + max + ", view_at=" + viewAt
+      + ", business=" + business + ", cookieLen=" + cookie.length);
+    let response = await TaskManager.getInstance().requestHistory(cookie, max, viewAt,
+      business);
+    BLog.i("requestHistory resp, code=" + response.code + ", bizCode="
+      + (response.result == null ? "null" : response.result.code) + ", bizMsg="
+      + (response.result == null ? "" : response.result.message));
+    if (response.code == -1) {
+      BLog.e("requestHistory err=" + response.message);
+      return new HistoryResult(false, false, false);
+    }
+    if (response.result == null) {
+      return new HistoryResult(false, false, false);
+    }
+    let bizCode: number = response.result.code;
+    if (bizCode == -101) {
+      BLog.w("requestHistory login expired");
+      return new HistoryResult(false, true, false);
+    }
+    if (bizCode != 0 || response.result.data == null) {
+      BLog.e("requestHistory biz err, code=" + bizCode);
+      return new HistoryResult(false, false, false);
+    }
+    let items: HistoryItem[] = response.result.data.list ?? [];
+    let source = DataSourceManager.getHistorySource();
+    if (pn == 1) {
+      source.setData(items);
+    } else {
+      source.addAllData(items);
+    }
+    // 游标分页无固定页长：本页非空即可能还有下一页（空页=到底，同网页版语义）
+    let hasMore: boolean = items.length > 0;
+    return new HistoryResult(true, false, hasMore);
+  }
+
+  /**
+   * 删除单条历史记录（kid 形如 av{aid}，csrf 鉴权）
+   */
+  async deleteHistory(kid: string): Promise<boolean> {
+    BLog.d("deleteHistory kid=" + kid);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    let csrf: string = ApiManager.getCsrf();
+    let response = await TaskManager.getInstance().deleteHistory(cookie, kid, csrf);
+    if (response.code == -1 || response.result == null || response.result.code != 0) {
+      BLog.e("deleteHistory failed, code=" + response.code
+        + ", bizCode=" + (response.result == null ? -1 : response.result.code)
+        + ", msg=" + response.message);
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * 清空全部历史记录（csrf 鉴权，不可恢复，调用方需二次确认）
+   */
+  async clearHistory(): Promise<boolean> {
+    BLog.d("clearHistory");
+    let cookie: string = LoginHelper.buildCookieHeader();
+    let csrf: string = ApiManager.getCsrf();
+    let response = await TaskManager.getInstance().clearHistory(cookie, csrf);
+    if (response.code == -1 || response.result == null || response.result.code != 0) {
+      BLog.e("clearHistory failed, code=" + response.code
+        + ", bizCode=" + (response.result == null ? -1 : response.result.code)
+        + ", msg=" + response.message);
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * 拉取收藏夹列表（含默认夹）：
+   * rid>0 时（视频页收藏入口）每夹带 fav_state 标记该视频是否已收藏于该夹。
+   */
+  async requestFavFolders(mid: number, rid: number = 0): Promise<FavFolderData | null> {
+    BLog.d("requestFavFolders mid=" + mid + ", rid=" + rid);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    let response = await TaskManager.getInstance().requestFavFolders(cookie, mid, rid, 2);
+    if (response.code == -1 || response.result == null) {
+      BLog.e("requestFavFolders err, code=" + response.code + ", msg=" + response.message);
+      return null;
+    }
+    if (response.result.code != 0) {
+      BLog.e("requestFavFolders biz err, code=" + response.result.code);
+      return null;
+    }
+    BLog.d("requestFavFolders result: " + JSON.stringify(response.result.data));
+    return response.result.data;
+  }
+
+  /**
+   * 拉取收藏夹内容并写入 FavMediaDataSource（按 mediaId 隔离，pn/ps 分页）：
+   * 登录失效（业务码 -101）返回 loginExpired 标志。
+   */
+  async requestFavResources(mediaId: number, pn: number, ps: number): Promise<FavResourceResult> {
+    BLog.d("requestFavResources mediaId=" + mediaId + ", pn=" + pn + ", ps=" + ps);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    let response = await TaskManager.getInstance().requestFavResources(cookie, mediaId, pn, ps,
+      '', 'mtime', 0, 0, 'web');
+    if (response.code == -1) {
+      BLog.e("requestFavResources err=" + response.message);
+      return new FavResourceResult(false, false, false);
+    }
+    if (response.result == null) {
+      return new FavResourceResult(false, false, false);
+    }
+    let bizCode: number = response.result.code;
+    if (bizCode == -101) {
+      BLog.w("requestFavResources login expired");
+      return new FavResourceResult(false, true, false);
+    }
+    if (bizCode != 0 || response.result.data == null) {
+      BLog.e("requestFavResources biz err, code=" + bizCode);
+      return new FavResourceResult(false, false, false);
+    }
+    let medias: FavMedia[] = response.result.data.medias ?? [];
+    let source = DataSourceManager.getFavMediaSource(mediaId.toString());
+    if (pn == 1) {
+      source.setData(medias);
+    } else {
+      source.addAllData(medias);
+    }
+    let hasMore: boolean = response.result.data.has_more ?? false;
+    return new FavResourceResult(true, false, hasMore);
+  }
+
+  /**
+   * 收藏/取消收藏：将视频加入/移出多个收藏夹（csrf 鉴权）。
+   * @param aid 视频 aid
+   * @param addIds 加入的收藏夹 media_id 列表
+   * @param delIds 移出的收藏夹 media_id 列表
+   */
+  async favDeal(aid: number, addIds: number[], delIds: number[]): Promise<boolean> {
+    BLog.d("favDeal aid=" + aid + ", add=" + addIds.length + ", del=" + delIds.length);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    let csrf: string = ApiManager.getCsrf();
+    let response = await TaskManager.getInstance().favDeal(cookie, aid, 2,
+      addIds.join(','), delIds.join(','), csrf);
+    if (response.code == -1 || response.result == null || response.result.code != 0) {
+      BLog.e("favDeal failed, code=" + response.code
+        + ", bizCode=" + (response.result == null ? -1 : response.result.code)
+        + ", msg=" + response.message);
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * 拉取稍后再看列表并全量写入 WatchLaterDataSource（单页接口）：
+   * 登录失效（业务码 -101）返回 loginExpired 标志。
+   */
+  async requestWatchLater(): Promise<WatchLaterResult> {
+    BLog.d("requestWatchLater");
+    let cookie: string = LoginHelper.buildCookieHeader();
+    let response = await TaskManager.getInstance().requestWatchLater(cookie);
+    if (response.code == -1) {
+      BLog.e("requestWatchLater err=" + response.message);
+      return new WatchLaterResult(false, false);
+    }
+    if (response.result == null) {
+      return new WatchLaterResult(false, false);
+    }
+    let bizCode: number = response.result.code;
+    if (bizCode == -101) {
+      BLog.w("requestWatchLater login expired");
+      return new WatchLaterResult(false, true);
+    }
+    if (bizCode != 0 || response.result.data == null) {
+      BLog.e("requestWatchLater biz err, code=" + bizCode);
+      return new WatchLaterResult(false, false);
+    }
+    let source = DataSourceManager.getWatchLaterSource();
+    source.setData(response.result.data.list ?? []);
+    return new WatchLaterResult(true, false);
+  }
+
+  /**
+   * 添加视频到稍后再看（csrf 鉴权）
+   */
+  async addWatchLater(aid: number): Promise<boolean> {
+    BLog.d("addWatchLater aid=" + aid);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    let csrf: string = ApiManager.getCsrf();
+    let response = await TaskManager.getInstance().addWatchLater(cookie, aid, csrf);
+    if (response.code == -1 || response.result == null || response.result.code != 0) {
+      BLog.e("addWatchLater failed, code=" + response.code
+        + ", bizCode=" + (response.result == null ? -1 : response.result.code)
+        + ", msg=" + response.message);
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * 从稍后再看移除视频（csrf 鉴权，调用方需二次确认）
+   */
+  async removeWatchLater(aid: number): Promise<boolean> {
+    BLog.d("removeWatchLater aid=" + aid);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    let csrf: string = ApiManager.getCsrf();
+    let response = await TaskManager.getInstance().removeWatchLater(cookie, aid, csrf);
+    if (response.code == -1 || response.result == null || response.result.code != 0) {
+      BLog.e("removeWatchLater failed, code=" + response.code
+        + ", bizCode=" + (response.result == null ? -1 : response.result.code)
+        + ", msg=" + response.message);
+      return false;
+    }
+    return true;
   }
 }

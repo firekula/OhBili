@@ -2,6 +2,7 @@ import UIAbility from '@ohos.app.ability.UIAbility';
 import hilog from '@ohos.hilog';
 import window from '@ohos.window';
 import { WindowManager } from '@ohos/common';
+import { DownloadManager } from '@ohos/common';
 import { ImageKnife, ImageKnifeDrawFactory } from '@ohos/imageknife'
 import { CustomEngineKeyImpl } from './CustomEngineKeyImpl';
 import { BLog } from '@ohos/common';
@@ -32,6 +33,8 @@ export default class PhoneAbility extends UIAbility {
     globalThis.windowStage = windowStage;
     globalThis.filesDir = this.context.filesDir;
     BLog.init(this.context.filesDir);
+    // 离线缓存：启动恢复 index.json（DOWNLOADING 中断残留降级 FAILED）
+    DownloadManager.getInstance().init(this.context);
     AppStorage.SetOrCreate("netIsAvailable", true);
     this.netConnRegister();
     this.getAppBundleInfo();

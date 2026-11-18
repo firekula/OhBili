@@ -56,6 +56,10 @@ let playerType = deviceInfo.abiList.indexOf('x86_64') >= 0 ? "AvPlayer" : "IjkPl
 export struct PlayerView {
   private cid: number;
   private bvid: string;
+  /** 续播起始秒数：prepared 后先 seek 再播放（0=从头播） */
+  private startAt: number = 0;
+  /** 本地视频文件绝对路径：非空时跳过 playurl/弹幕请求直接播本地（离线缓存） */
+  private localPath: string = '';
   @StorageLink('isPortrait') isPortrait: boolean = true
   @Link @Watch('onPageStateUpdated') pageState: string;
   private player: IPlayer = (playerType == "IjkPlayer" ? new IjkPlayer() : new AvPlayer());
@@ -215,7 +219,11 @@ export struct PlayerView {
         .onLoad((context) => {
           this.mPlayContext = context;
           this.player.initPlay(this.mPlayContext).then(_ => {
-            if (this.cid == 0) {
+            if (this.localPath != '') {
+              // 本地播放：跳过 playurl/弹幕网络请求，直接播本地文件
+              this.mPlayUrl = this.localPath;
+              this.initPlay(this.localPath);
+            } else if (this.cid == 0) {
               this.getPageList(this.bvid);
             } else {
               this.getPlayUrl(this.bvid, this.cid);
@@ -416,6 +424,12 @@ export struct PlayerView {
         } else if (status == IPlayStatus.PREPARED) {
           thisClass.mFirst = false;
           thisClass.hideLoadIng();
+          if (thisClass.startAt > 0) {
+            // 续播：seek 到上次观看进度，seek 完成后播放器自动恢复播放
+            BLog.i('BiliPlayer resume seekTo: ' + thisClass.startAt + 's');
+            thisClass.player.seekTo(thisClass.startAt * 1000);
+            thisClass.startAt = 0;
+          }
         } else if (status == IPlayStatus.PLAY) {
           thisClass.hideLoadIng();
           thisClass.mDanmakuModel.resume();

@@ -12,6 +12,7 @@
 
 import { VideoInfoView } from './VideoRelated';
 import { VideoTopBar } from './VideoTopBar';
+import { VideoActionRow } from './VideoActionRow';
 import { PopularItemView } from '../home/PopularItem';
 import { BaseVideo } from './../../model/response/Response';
 import { DataSourceManager } from './../../model/DataSourceManager';
@@ -31,7 +32,10 @@ export struct VideoOverview {
         LazyForEach(DataSourceManager.getRelatedSource(this.vInfo.bvid), (item: BaseVideo, index: number) => {
           ListItem() {
             if (index == 0) {
-              VideoInfoView({ vInfo: $vInfo, isFollowing: $isFollowing, fansCount: $fansCount, archiveCount: $archiveCount })
+              Column() {
+                VideoInfoView({ vInfo: $vInfo, isFollowing: $isFollowing, fansCount: $fansCount, archiveCount: $archiveCount })
+                VideoActionRow({ vInfo: this.vInfo })
+              }
             } else if (index == 1) {
               VideoTopBar({ vInfo: $vInfo })
             } else {

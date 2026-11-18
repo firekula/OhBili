@@ -10,6 +10,12 @@
  * See the Mulan PSL v2 for more details.
  */
 
+import { NavHelper } from '../../utils/NavHelper';
+
+/**
+ * 我的页四宫格：离线缓存/历史记录/我的收藏/稍后再看，
+ * 点击经 NavHelper 设备门禁导航（tablet 等其他设备静默）。
+ */
 @Component
 export struct MineOptView {
   build() {
@@ -23,6 +29,9 @@ export struct MineOptView {
           .fontColor('#333333')
           .margin({ top: 8 })
       }.layoutWeight(1)
+      .onClick(() => {
+        NavHelper.goOfflineCache();
+      })
 
       Column() {
         Image($r('app.media.ic_mine_history'))
@@ -33,6 +42,9 @@ export struct MineOptView {
           .fontColor('#333333')
           .margin({ top: 8 })
       }.layoutWeight(1)
+      .onClick(() => {
+        NavHelper.goHistory();
+      })
 
       Column() {
         Image($r('app.media.ic_mine_favorite'))
@@ -43,6 +55,9 @@ export struct MineOptView {
           .fontColor('#333333')
           .margin({ top: 8 })
       }.layoutWeight(1)
+      .onClick(() => {
+        NavHelper.goFavorite();
+      })
 
       Column() {
         Image($r('app.media.ic_mine_watchlater'))
@@ -53,6 +68,9 @@ export struct MineOptView {
           .fontColor('#333333')
           .margin({ top: 8 })
       }.layoutWeight(1)
+      .onClick(() => {
+        NavHelper.goWatchLater();
+      })
     }.width('100%').margin({ top: 16, bottom: 16 })
   }
 }
