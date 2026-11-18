@@ -25,7 +25,7 @@ import {
   Headers,
   Query
 } from '@ohos/retrofit';
-import { ArchiveStatResponse } from '../model/response/ArchiveStatResponse';
+import { ViewResponse } from '../model/response/ViewResponse';
 import { CountryListResponse } from '../model/response/GenericCountryListResponse';
 import { PlayUrlResponse } from '../model/response/PlayUrlResponse';
 import { PopularResponse } from '../model/response/PopularResponse';
@@ -199,10 +199,12 @@ export class DataService extends BaseService {
 
   /**
    * 获取视频分P列表
+   * 风控规避：不带浏览器 User-Agent 时 B 站返回 HTTP 412（2026-11 实测），需与网页版请求头对齐
    * @param @Query('bvid') bvid 视频id
    * @returns
    */
   @GET("x/player/pagelist")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
   async getPageList(@Query('bvid') bvid: string):
     Promise<Response<VideoPartsResponse>> {
     return <Response<VideoPartsResponse>> {}
@@ -219,20 +221,28 @@ export class DataService extends BaseService {
   };
 
   /**
-   * 获取视频状态
+   * 获取视频详情（aid/cid/stat，网页版视频页主接口，替代已下线的 archive/stat）
+   * 端点勘误：旧 x/web-interface/archive/stat 已于 2026-11 前后下线
+   * （不带 UA 返回 412，带浏览器 UA 亦 404）；现行网页版取视频状态走
+   * x/web-interface/view（来源：bilibili.com 视频页 bundle 实证 + 接口实测）。
+   * 匿名可访问（无需 WBI/登录 Cookie），但不带浏览器 User-Agent 时 HTTP 412。
+   * @param @Query('bvid') bvid 视频id
    * @returns
    */
-  @GET("x/web-interface/archive/stat")
-  async getArchiveStat(@Query('bvid') bvid: string):
-    Promise<Response<ArchiveStatResponse>> {
-    return <Response<ArchiveStatResponse>> {}
+  @GET("x/web-interface/view")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async getVideoView(@Query('bvid') bvid: string):
+    Promise<Response<ViewResponse>> {
+    return <Response<ViewResponse>> {}
   };
 
   /**
    * 获取视频简介
+   * 风控规避：不带浏览器 User-Agent 时 B 站返回 HTTP 412（2026-11 实测），需与网页版请求头对齐
    * @returns
    */
   @GET("x/web-interface/archive/desc")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
   async getArchiveDesc(@Query('bvid') bvid: string):
     Promise<Response<StringResponse>> {
     return <Response<StringResponse>> {}

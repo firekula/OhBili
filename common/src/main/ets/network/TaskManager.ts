@@ -28,6 +28,7 @@ import { SearchDefaultResponse } from '../model/response/SearchDefaultResponse';
 import { ReplyDetailResponse } from '../model/response/ReplyDetailResponse';
 import { ApiResponse, EmptyResponse, StringResponse } from '../model/response/Response';
 import { ArchiveStatResponse } from '../model/response/ArchiveStatResponse';
+import { ViewResponse } from '../model/response/ViewResponse';
 import { CountryListResponse } from '../model/response/GenericCountryListResponse';
 import { SendSmsCaptchaResponse } from '../model/response/SendSmsCaptchaResponse';
 import { SmsLoginResponse } from '../model/response/SmsLoginResponse';
@@ -602,10 +603,21 @@ async function requestArchiveStatTask(bvid: string): Promise<ApiResponse<Archive
     let dataService = new ServiceBuilder()
       .setEndpoint(ApiConstants.apiBase)
       .build(DataService);
-    let resp: Response<ArchiveStatResponse> = await dataService.getArchiveStat(bvid);
+    // 旧端点 x/web-interface/archive/stat 已下线（412/404），
+    // 改经 x/web-interface/view 取详情，映射 data.stat 为原 ArchiveStatResponse 结构（含 aid/reply）
+    let resp: Response<ViewResponse> = await dataService.getVideoView(bvid);
     code = resp.code();
     message = resp.message();
-    result = resp.result;
+    let body: ViewResponse = resp.result;
+    if (body != null && body.data != null && body.data.stat != null) {
+      let wrapped: ArchiveStatResponse = {
+        code: body.code,
+        message: body.message,
+        ttl: body.ttl,
+        data: body.data.stat
+      };
+      result = wrapped;
+    }
   } catch (err) {
     code = -1;
     message = err + "";
