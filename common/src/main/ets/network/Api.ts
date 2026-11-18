@@ -36,12 +36,21 @@ import { RelatedResponse } from '../model/response/RelatedResponse';
 import { ReplyDetailResponse } from '../model/response/ReplyDetailResponse';
 import { ReplyResponse } from '../model/response/ReplyResponse';
 import { StringResponse } from '../model/response/Response';
+import { ApiConstants } from './ApiConstants';
+import { NavResponse } from '../model/response/NavResponse';
+import { QrCodeGenerateResponse } from '../model/response/QrCodeGenerateResponse';
+import { QrPollResponse } from '../model/response/QrPollResponse';
 import { SearchDefaultResponse } from '../model/response/SearchDefaultResponse';
 import { SearchResponse } from '../model/response/SearchResponse';
 import { SendSmsCaptchaResponse } from '../model/response/SendSmsCaptchaResponse';
 import { SmsLoginResponse } from '../model/response/SmsLoginResponse';
 import { CardInfoResponse } from '../model/response/UserCardInfoResponse';
+import { FingerSpiResponse } from '../model/response/FingerSpiResponse';
 import { VideoPartsResponse } from '../model/response/VideoPartsResponse';
+import { DynamicFeedResponse } from '../model/response/DynamicFeedResponse';
+import { SpaceAccInfoResponse } from '../model/response/SpaceAccInfoResponse';
+import { SpaceArcSearchResponse } from '../model/response/SpaceArcSearchResponse';
+import { SeriesArchivesResponse } from '../model/response/SeriesArchivesResponse';
 
 @BasePath("/")
 export class DataService extends BaseService {
@@ -57,26 +66,42 @@ export class DataService extends BaseService {
   };
 
   /**
-   * 首页推荐视频
+   * 首页推荐视频（对齐 B 站网页版首页 feed 参数集，WBI 签名）
+   * @param @Header('Cookie') cookie Cookie 请求头（设备 buvid + 登录 Cookie）
    * @param @Query('ps') ps 请求数量
+   * @param @Query('fresh_idx_1h') fresh_idx_1h 1小时刷新索引
+   * @param @Query('fresh_idx_4h') fresh_idx_4h 4小时刷新索引
    * @param @Query('fresh_idx') fresh_idx 刷新索引
-   * @param @Query('feed_version') feed_version V3不带广告
+   * @param @Query('fresh_type') fresh_type 刷新类型（网页版固定 4）
+   * @param @Query('feed_version') feed_version 网页版现行 V2
+   * @param @Query('w_rid') wRid WBI 签名
+   * @param @Query('wts') wts 签名时间戳
    */
   @GET("x/web-interface/index/top/feed/rcmd")
-  async getRecommend(@Query('ps') ps: number,
+  async getRecommend(@Header('Cookie') cookie: string,
+                     @Query('ps') ps: number,
+                     @Query('fresh_idx_1h') fresh_idx_1h: number,
+                     @Query('fresh_idx_4h') fresh_idx_4h: number,
                      @Query('fresh_idx') fresh_idx: number,
-                     @Query('feed_version') feed_version: string = "V3"):
+                     @Query('fresh_type') fresh_type: number,
+                     @Query('feed_version') feed_version: string,
+                     @Query('w_rid') wRid: string,
+                     @Query('wts') wts: string):
     Promise<Response<RecommendResponse>> {
     return <Response<RecommendResponse>> {}
   };
 
   /**
-   * 获取热门视频
+   * 获取热门视频（对齐网页版：携带 Cookie，ps 由调用方传入网页版分页大小）
+   * 风控检测：不带浏览器 User-Agent 时 B 站返回 200 + code=-352（39 字节桩响应，无 data），需按风控处理
+   * @param @Header('Cookie') cookie Cookie 请求头
    * @param @Query('ps') ps 请求数量
    * @param @Query('pn') pn 请求页码
    */
   @GET("x/web-interface/popular")
-  async getPopular(@Query('ps') ps: number,
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async getPopular(@Header('Cookie') cookie: string,
+                   @Query('ps') ps: number,
                    @Query('pn') pn: number):
     Promise<Response<PopularResponse>> {
     return <Response<PopularResponse>> {}
@@ -147,14 +172,23 @@ export class DataService extends BaseService {
   };
 
   /**
-   * 搜索请求
-   * @param @Query('keyword') keyword 搜索关键字
+   * 搜索请求（对齐 B 站网页版：WBI 签名端点 + 真实 Cookie + 浏览器 UA/Referer）
+   * 风控检测：不带浏览器 User-Agent 时 B 站返回 200 + data.v_voucher（无 result），需按风控处理
+   * @param @Header('Cookie') cookie Cookie 请求头（设备 buvid + 登录 Cookie）
+   * @param @Query('search_type') search_type 搜索类型（video 等）
+   * @param @Query('keyword') keyword 搜索关键字（已 URL 编码）
+   * @param @Query('page') page 页码
+   * @param @Query('w_rid') wRid WBI 签名
+   * @param @Query('wts') wts 签名时间戳
    */
-  @GET("x/web-interface/search/type")
+  @GET("x/web-interface/wbi/search/type")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
   async getSearch(@Header('Cookie') cookie: string,
                   @Query('search_type') search_type: string,
                   @Query('keyword') keyword: string,
-                  @Query('page') page: number):
+                  @Query('page') page: number,
+                  @Query('w_rid') wRid: string,
+                  @Query('wts') wts: string):
     Promise<Response<SearchResponse>> {
     return <Response<SearchResponse>> {}
   };
@@ -265,12 +299,128 @@ export class DataService extends BaseService {
 
   /**
    * 获取用户卡片信息，包含用户粉丝数量及用户投稿数量
+   * 风控规避：不带浏览器 User-Agent 时 B 站返回 code=-352（风控校验失败），需与网页版请求头对齐
    * @param mid 用户mid
    * @param photo 是否需要获取用户主页头图，默认false
    * @returns
    */
   @GET("x/web-interface/card")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
   async getUserCardInfo(@Query("mid") mid: number, @Query("photo") photo: boolean = false): Promise<Response<CardInfoResponse>> {
     return <Response<CardInfoResponse>>{};
+  }
+
+  /**
+   * 生成B站Web端扫码登录二维码
+   * @returns data: {url 二维码内容, qrcode_key 轮询键}
+   */
+  @GET("x/passport-login/web/qrcode/generate")
+  async generateQrCode(): Promise<Response<QrCodeGenerateResponse>> {
+    return <Response<QrCodeGenerateResponse>>{};
+  }
+
+  /**
+   * 轮询扫码登录状态
+   * @param qrcodeKey 生成二维码时返回的 qrcode_key
+   * 顶层业务码：86101 未扫码 / 86090 已扫码待确认 / 86038 已过期 / 0 成功
+   */
+  @GET("x/passport-login/web/qrcode/poll")
+  async pollQrCode(@Query('qrcode_key') qrcodeKey: string): Promise<Response<QrPollResponse>> {
+    return <Response<QrPollResponse>>{};
+  }
+
+  /**
+   * 获取用户导航信息（校验登录态并获取昵称头像，含 WBI 签名密钥 wbi_img）
+   * @param cookie Cookie 请求头：SESSDATA=...; bili_jct=...; DedeUserID=...
+   */
+  @GET("x/web-interface/nav")
+  async getNavInfo(@Header('Cookie') cookie: string): Promise<Response<NavResponse>> {
+    return <Response<NavResponse>>{};
+  }
+
+  /**
+   * 获取 Web 端设备指纹 Cookie（buvid3/buvid4）
+   * 响应 data: { b_3: buvid3, b_4: buvid4 }
+   */
+  @GET("x/frontend/finger/spi")
+  async getFingerSpi(): Promise<Response<FingerSpiResponse>> {
+    return <Response<FingerSpiResponse>>{};
+  }
+
+  /**
+   * 获取关注 UP 主动态流（对齐网页版动态页，offset 游标分页）
+   * 业务码 -101 表示登录失效
+   * @param @Header('Cookie') cookie Cookie 请求头（设备 buvid + 登录 Cookie）
+   * @param timezone_offset 时区偏移（网页版固定 -480）
+   * @param offset 分页游标（首页空串）
+   * @param features 特性开关（itemOpusStyle：新版图文格式）
+   */
+  @GET("x/polymer/web-dynamic/v1/feed/all")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': 'https://t.bilibili.com' })
+  async getDynamicFeed(@Header('Cookie') cookie: string,
+                       @Query('timezone_offset') timezoneOffset: number,
+                       @Query('offset') offset: string,
+                       @Query('features') features: string):
+    Promise<Response<DynamicFeedResponse>> {
+    return <Response<DynamicFeedResponse>>{};
+  }
+
+  /**
+   * 获取用户空间资料（WBI 签名，风控敏感，失败时调用方降级）
+   * @param @Header('Cookie') cookie Cookie 请求头
+   * @param mid 用户 mid
+   * @param w_rid WBI 签名
+   * @param wts 签名时间戳
+   */
+  @GET("x/space/wbi/acc/info")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': 'https://space.bilibili.com' })
+  async getSpaceAccInfo(@Header('Cookie') cookie: string,
+                        @Query('mid') mid: number,
+                        @Query('w_rid') wRid: string,
+                        @Query('wts') wts: string):
+    Promise<Response<SpaceAccInfoResponse>> {
+    return <Response<SpaceAccInfoResponse>>{};
+  }
+
+  /**
+   * 获取用户投稿视频列表（WBI 签名，风控敏感，失败时降级 series 接口）
+   * 业务码 -352 表示风控
+   * @param @Header('Cookie') cookie Cookie 请求头
+   * @param mid 用户 mid
+   * @param pn 页码
+   * @param ps 每页项数
+   * @param order 排序（pubdate 按发布时间）
+   * @param w_rid WBI 签名
+   * @param wts 签名时间戳
+   */
+  @GET("x/space/wbi/arc/search")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': 'https://space.bilibili.com' })
+  async getSpaceArcSearch(@Header('Cookie') cookie: string,
+                          @Query('mid') mid: number,
+                          @Query('pn') pn: number,
+                          @Query('ps') ps: number,
+                          @Query('order') order: string,
+                          @Query('w_rid') wRid: string,
+                          @Query('wts') wts: string):
+    Promise<Response<SpaceArcSearchResponse>> {
+    return <Response<SpaceArcSearchResponse>>{};
+  }
+
+  /**
+   * 获取用户投稿视频列表（降级接口，无需 WBI 签名）
+   * 风控规避：不带浏览器 User-Agent 时 B 站可能返回 HTTP 412，需与网页版请求头对齐
+   * @param mid 用户mid
+   * @param keywords 过滤关键字（空串 = 全部投稿）
+   * @param ps 每页项数
+   * @param pn 页码
+   */
+  @GET("x/series/recArchivesByKeywords")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': 'https://space.bilibili.com' })
+  async getSeriesArchives(@Query('mid') mid: number,
+                          @Query('keywords') keywords: string,
+                          @Query('ps') ps: number,
+                          @Query('pn') pn: number):
+    Promise<Response<SeriesArchivesResponse>> {
+    return <Response<SeriesArchivesResponse>>{};
   }
 }

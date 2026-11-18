@@ -10,6 +10,8 @@
     "pages/Feedback",
     "pages/About",
     "pages/LogDetail",
-    "pages/Login"
+    "pages/Login",
+    "pages/UserSpace",
+    "pages/Gallery"
   ]
 }

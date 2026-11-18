@@ -13,6 +13,7 @@ import { ApiManager } from '../../network/ApiManager';
 
 import { BaseVideo } from './../../model/response/Response';
 import { RichString, RichStringType, StringUtil } from './../../utils/StringUtil';
+import { NavHelper } from './../../utils/NavHelper';
 
 @Component
 export struct VideoInfoView {
@@ -30,6 +31,10 @@ export struct VideoInfoView {
           .width(32)
           .height(32)
           .borderRadius(16)
+          .onClick(() => {
+            // 点击 UP 主头像进入其空间页（tablet 经设备门禁静默无操作）
+            NavHelper.goUserSpace(this.vInfo.owner.mid);
+          })
         Column() {
           Text(this.vInfo.owner.name).fontSize(14)
           Row() {
@@ -45,6 +50,10 @@ export struct VideoInfoView {
             Text($r('app.string.video')).fontSize(10).fontColor(Color.Gray)
           }
         }.margin({ left: 12 }).alignItems(HorizontalAlign.Start)
+        .onClick(() => {
+          // 点击 UP 主昵称/粉丝信息区域进入其空间页（tablet 经设备门禁静默无操作）
+          NavHelper.goUserSpace(this.vInfo.owner.mid);
+        })
 
         Blank()
         if(this.isFollowing){

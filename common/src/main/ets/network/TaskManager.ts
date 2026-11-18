@@ -12,6 +12,7 @@
 
 import axios from '@ohos/retrofit';
 import taskPool from '@ohos.taskpool';
+import http from '@ohos.net.http';
 import { Response, ServiceBuilder } from '@ohos/retrofit';
 import { DataService } from './Api';
 import { RelatedResponse } from '../model/response/RelatedResponse';
@@ -31,6 +32,15 @@ import { CountryListResponse } from '../model/response/GenericCountryListRespons
 import { SendSmsCaptchaResponse } from '../model/response/SendSmsCaptchaResponse';
 import { SmsLoginResponse } from '../model/response/SmsLoginResponse';
 import { CardInfoResponse } from '../model/response/UserCardInfoResponse';
+import { NavResponse } from '../model/response/NavResponse';
+import { FingerSpiResponse } from '../model/response/FingerSpiResponse';
+import { QrCodeGenerateResponse } from '../model/response/QrCodeGenerateResponse';
+import { QrPollResponse } from '../model/response/QrPollResponse';
+import { CrossDomainResult } from '../model/response/CrossDomainResult';
+import { DynamicFeedResponse } from '../model/response/DynamicFeedResponse';
+import { SpaceAccInfoResponse } from '../model/response/SpaceAccInfoResponse';
+import { SpaceArcSearchResponse } from '../model/response/SpaceArcSearchResponse';
+import { SeriesArchivesResponse } from '../model/response/SeriesArchivesResponse';
 
 export class TaskManager {
   public static getInstance(): TaskManager {
@@ -46,14 +56,17 @@ export class TaskManager {
     return response
   }
 
-  async requestRecommend(freshIdx: number): Promise<ApiResponse<RecommendResponse>> {
-    var task = new taskPool.Task(requestRecommendTask, freshIdx);
+  async requestRecommend(cookie: string, ps: number, freshIdx1h: number, freshIdx4h: number,
+                         freshIdx: number, freshType: number, feedVersion: string,
+                         wRid: string, wts: string): Promise<ApiResponse<RecommendResponse>> {
+    var task = new taskPool.Task(requestRecommendTask, cookie, ps, freshIdx1h, freshIdx4h,
+      freshIdx, freshType, feedVersion, wRid, wts);
     var response = await taskPool.execute(task) as ApiResponse<RecommendResponse>;
     return response
   }
 
-  async requestPopular(pn: number): Promise<ApiResponse<PopularResponse>> {
-    var task = new taskPool.Task(requestPopularTask, pn);
+  async requestPopular(cookie: string, ps: number, pn: number): Promise<ApiResponse<PopularResponse>> {
+    var task = new taskPool.Task(requestPopularTask, cookie, ps, pn);
     var response = await taskPool.execute(task) as ApiResponse<PopularResponse>;
     return response
   }
@@ -92,8 +105,9 @@ export class TaskManager {
   }
 
   async requestSearch(cookies: string, type: string,
-                                   keyword: string, pn: number): Promise<ApiResponse<SearchResponse>> {
-    var task = new taskPool.Task(requestSearchTask, cookies, type, keyword, pn);
+                                    keyword: string, pn: number,
+                                    wRid: string, wts: string): Promise<ApiResponse<SearchResponse>> {
+    var task = new taskPool.Task(requestSearchTask, cookies, type, keyword, pn, wRid, wts);
     var response = await taskPool.execute(task) as ApiResponse<SearchResponse>;
     return response;
   }
@@ -150,6 +164,125 @@ export class TaskManager {
     var response = await taskPool.execute(task) as ApiResponse<CardInfoResponse>;
     return response;
   }
+
+  async requestQrCodeGenerate(): Promise<ApiResponse<QrCodeGenerateResponse>> {
+    var task = new taskPool.Task(requestQrCodeGenerateTask);
+    var response = await taskPool.execute(task) as ApiResponse<QrCodeGenerateResponse>;
+    return response;
+  }
+
+  async requestQrPoll(qrcodeKey: string): Promise<ApiResponse<QrPollResponse>> {
+    var task = new taskPool.Task(requestQrPollTask, qrcodeKey);
+    var response = await taskPool.execute(task) as ApiResponse<QrPollResponse>;
+    return response;
+  }
+
+  async requestNavInfo(cookie: string): Promise<ApiResponse<NavResponse>> {
+    var task = new taskPool.Task(requestNavInfoTask, cookie);
+    var response = await taskPool.execute(task) as ApiResponse<NavResponse>;
+    return response;
+  }
+
+  async requestFingerSpi(): Promise<ApiResponse<FingerSpiResponse>> {
+    var task = new taskPool.Task(requestFingerSpiTask);
+    var response = await taskPool.execute(task) as ApiResponse<FingerSpiResponse>;
+    return response;
+  }
+
+  /**
+   * ticket 型 crossDomain URL 换取登录 Cookie：
+   * B站扫码轮询成功后返回的 url 若仅含 ticket（无 SESSDATA 参数），
+   * 需 GET 该 url 并从 302 响应的 Set-Cookie 中提取登录 Cookie。
+   */
+  async exchangeCrossDomainTicket(url: string, cookie: string): Promise<CrossDomainResult> {
+    var task = new taskPool.Task(exchangeCrossDomainTicketTask, url, cookie);
+    var response = await taskPool.execute(task) as CrossDomainResult;
+    return response;
+  }
+
+  async requestDynamicFeed(cookie: string, offset: string): Promise<ApiResponse<DynamicFeedResponse>> {
+    var task = new taskPool.Task(requestDynamicFeedTask, cookie, offset);
+    var response = await taskPool.execute(task) as ApiResponse<DynamicFeedResponse>;
+    return response;
+  }
+
+  async requestSpaceAccInfo(cookie: string, mid: number, wRid: string, wts: string):
+    Promise<ApiResponse<SpaceAccInfoResponse>> {
+    var task = new taskPool.Task(requestSpaceAccInfoTask, cookie, mid, wRid, wts);
+    var response = await taskPool.execute(task) as ApiResponse<SpaceAccInfoResponse>;
+    return response;
+  }
+
+  async requestSpaceArcSearch(cookie: string, mid: number, pn: number, ps: number,
+                               order: string, wRid: string, wts: string):
+    Promise<ApiResponse<SpaceArcSearchResponse>> {
+    var task = new taskPool.Task(requestSpaceArcSearchTask, cookie, mid, pn, ps, order, wRid, wts);
+    var response = await taskPool.execute(task) as ApiResponse<SpaceArcSearchResponse>;
+    return response;
+  }
+
+  async requestSeriesArchives(mid: number, pn: number, ps: number):
+    Promise<ApiResponse<SeriesArchivesResponse>> {
+    var task = new taskPool.Task(requestSeriesArchivesTask, mid, pn, ps);
+    var response = await taskPool.execute(task) as ApiResponse<SeriesArchivesResponse>;
+    return response;
+  }
+}
+
+/**
+ * 以浏览器上下文 GET crossDomain URL（跟随重定向 + 实例级自动 Cookie）。
+ * netstack 的 maxRedirects:0 语义是"遇到 302 抛 2300047"而非返回 302 响应，
+ * 故改用默认跟随重定向：302 的 Set-Cookie 由 netstack 按域名规则自动携带，
+ * 并累积进 response.cookies（enableAutoCookie，API 26）。
+ * cookieParams 不在此填充（并发函数仅允许引用导入变量），
+ * 由主线程调用 parseCrossDomainResultCookies() 解析。
+ */
+async function exchangeCrossDomainTicketTask(url: string, cookie: string): Promise<CrossDomainResult> {
+  "use concurrent"
+  let result: CrossDomainResult = new CrossDomainResult();
+  let httpRequest = http.createHttp();
+  try {
+    // 开启实例级 Cookie 自动携带：302 的 Set-Cookie 自动带到重定向目标
+    httpRequest.enableAutoCookie(true);
+    let options: http.HttpRequestOptions = {
+      method: http.RequestMethod.GET,
+      header: {
+        'User-Agent': ApiConstants.userAgent,
+        'Referer': 'https://passport.bilibili.com/',
+        'Cookie': cookie
+      },
+      // 跟随重定向（默认 30 次），Set-Cookie 在链路中被 netstack 捕获
+      connectTimeout: 10000,
+      readTimeout: 10000
+    };
+    let response = await httpRequest.request(url, options);
+    result.responseCode = response.responseCode;
+    result.cookiesField = response.cookies ?? '';
+    let header = response.header as Record<string, Object>;
+    let loc: Object = header['location'] ?? header['Location'];
+    if (typeof loc === 'string') {
+      result.location = loc;
+    }
+    let setCookie: Object = header['set-cookie'] ?? header['Set-Cookie'];
+    if (typeof setCookie === 'string') {
+      result.setCookieRaw = setCookie;
+    } else if (Array.isArray(setCookie)) {
+      let arr: Object[] = setCookie as Object[];
+      let lines: string[] = [];
+      for (let i = 0; i < arr.length; i++) {
+        lines.push(arr[i] as string);
+      }
+      result.setCookieRaw = lines.join('\n');
+    }
+    if (typeof response.result === 'string') {
+      result.bodySnippet = (response.result as string).substring(0, 300);
+    }
+  } catch (err) {
+    result.errorMessage = JSON.stringify(err);
+  } finally {
+    httpRequest.destroy();
+  }
+  return result;
 }
 
 async function requestRelatedTask(bvid: string): Promise<ApiResponse<RelatedResponse>> {
@@ -172,7 +305,9 @@ async function requestRelatedTask(bvid: string): Promise<ApiResponse<RelatedResp
   return new ApiResponse(result, code, message);
 }
 
-async function requestRecommendTask(freshIdx: number): Promise<ApiResponse<RecommendResponse>> {
+async function requestRecommendTask(cookie: string, ps: number, freshIdx1h: number, freshIdx4h: number,
+                                    freshIdx: number, freshType: number, feedVersion: string,
+                                    wRid: string, wts: string): Promise<ApiResponse<RecommendResponse>> {
   "use concurrent"
   let code: number = 0
   let message: string = ""
@@ -181,7 +316,8 @@ async function requestRecommendTask(freshIdx: number): Promise<ApiResponse<Recom
     let dataService = new ServiceBuilder()
       .setEndpoint(ApiConstants.apiBase)
       .build(DataService);
-    let resp: Response<RecommendResponse> = await dataService.getRecommend(ApiConstants.itemNum, freshIdx);
+    let resp: Response<RecommendResponse> = await dataService.getRecommend(cookie, ps,
+      freshIdx1h, freshIdx4h, freshIdx, freshType, feedVersion, wRid, wts);
     code = resp.code();
     message = resp.message();
     result = resp.result;
@@ -193,7 +329,7 @@ async function requestRecommendTask(freshIdx: number): Promise<ApiResponse<Recom
   return new ApiResponse(result, code, message);
 }
 
-async function requestPopularTask(pn: number): Promise<ApiResponse<PopularResponse>> {
+async function requestPopularTask(cookie: string, ps: number, pn: number): Promise<ApiResponse<PopularResponse>> {
   "use concurrent"
   let code: number = 0
   let message: string = ""
@@ -202,7 +338,7 @@ async function requestPopularTask(pn: number): Promise<ApiResponse<PopularRespon
     let dataService = new ServiceBuilder()
       .setEndpoint(ApiConstants.apiBase)
       .build(DataService);
-    let resp: Response<PopularResponse> = await dataService.getPopular(ApiConstants.itemNum, pn);
+    let resp: Response<PopularResponse> = await dataService.getPopular(cookie, ps, pn);
     code = resp.code();
     message = resp.message();
     result = resp.result;
@@ -321,20 +457,24 @@ async function requestRankingTask(): Promise<ApiResponse<RankingResponse>> {
 }
 
 async function requestSearchTask(cookies: string, type: string,
-                                 keyword: string, pn: number): Promise<ApiResponse<SearchResponse>> {
+                                 keyword: string, pn: number,
+                                 wRid: string, wts: string): Promise<ApiResponse<SearchResponse>> {
   "use concurrent"
   let code: number = 0
   let message: string = ""
   let result: SearchResponse
   try {
+    console.log("OhBiliSearch task enter, keyword=" + keyword + ", pn=" + pn);
     let dataService = new ServiceBuilder()
       .setEndpoint(ApiConstants.apiBase)
       .build(DataService);
-    let resp: Response<SearchResponse> = await dataService.getSearch(cookies, type, keyword, pn);
+    let resp: Response<SearchResponse> = await dataService.getSearch(cookies, type, keyword, pn, wRid, wts);
+    console.log("OhBiliSearch task resp, status=" + resp.code() + ", msg=" + resp.message());
     code = resp.code();
     message = resp.message();
     result = resp.result;
   } catch (err) {
+    console.log("OhBiliSearch task err: " + err);
     code = -1;
     message = err + "";
   }
@@ -504,6 +644,172 @@ async function requestUserCardInfoTask(mid: number, photo: boolean = false): Pro
   }catch (err) {
     code = -1;
     message = err+"";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestQrCodeGenerateTask(): Promise<ApiResponse<QrCodeGenerateResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: QrCodeGenerateResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.loginBase)
+      .build(DataService);
+    let resp: Response<QrCodeGenerateResponse> = await dataService.generateQrCode();
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestQrPollTask(qrcodeKey: string): Promise<ApiResponse<QrPollResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: QrPollResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.loginBase)
+      .build(DataService);
+    let resp: Response<QrPollResponse> = await dataService.pollQrCode(qrcodeKey);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestNavInfoTask(cookie: string): Promise<ApiResponse<NavResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: NavResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<NavResponse> = await dataService.getNavInfo(cookie);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestFingerSpiTask(): Promise<ApiResponse<FingerSpiResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: FingerSpiResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<FingerSpiResponse> = await dataService.getFingerSpi();
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestDynamicFeedTask(cookie: string, offset: string):
+  Promise<ApiResponse<DynamicFeedResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: DynamicFeedResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<DynamicFeedResponse> = await dataService.getDynamicFeed(cookie, -480, offset, 'itemOpusStyle');
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestSpaceAccInfoTask(cookie: string, mid: number, wRid: string, wts: string):
+  Promise<ApiResponse<SpaceAccInfoResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: SpaceAccInfoResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<SpaceAccInfoResponse> = await dataService.getSpaceAccInfo(cookie, mid, wRid, wts);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestSpaceArcSearchTask(cookie: string, mid: number, pn: number, ps: number,
+                                          order: string, wRid: string, wts: string):
+  Promise<ApiResponse<SpaceArcSearchResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: SpaceArcSearchResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<SpaceArcSearchResponse> =
+      await dataService.getSpaceArcSearch(cookie, mid, pn, ps, order, wRid, wts);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestSeriesArchivesTask(mid: number, pn: number, ps: number):
+  Promise<ApiResponse<SeriesArchivesResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: SeriesArchivesResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<SeriesArchivesResponse> = await dataService.getSeriesArchives(mid, '', ps, pn);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
   }
   return new ApiResponse(result, code, message);
 }

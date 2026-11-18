@@ -1,4 +1,7 @@
 export { BLog } from './src/main/ets/utils/BLog'
+export { LoginHelper } from './src/main/ets/utils/LoginHelper'
+export { NavHelper } from './src/main/ets/utils/NavHelper'
+export { WbiSigner } from './src/main/ets/utils/WbiSigner'
 export { ResUtils } from './src/main/ets/utils/ResUtils'
 export { StringUtil, RichString, RichStringType } from './src/main/ets/utils/StringUtil'
 export { WindowManager } from './src/main/ets/utils/WindowManager'
@@ -8,7 +11,7 @@ export { DanmakuParser } from './src/main/ets/model/proto/DanmakuParser'
 export { ProtoSource } from './src/main/ets/model/proto/ProtoSource'
 
 export { BasicDataSource } from './src/main/ets/model/BasicDataSource'
-export { DataSourceManager } from './src/main/ets/model/DataSourceManager'
+export { DataSourceManager, DynamicDataSource, SpaceArcDataSource } from './src/main/ets/model/DataSourceManager'
 export { ReplyDataSource } from './src/main/ets/model/ReplyDataSource'
 export { SearchDataSource } from './src/main/ets/model/SearchDataSource'
 export { VideoDataSource } from './src/main/ets/model/VideoDataSource'
@@ -25,8 +28,22 @@ export { ReplyResponse, ReplyCursor, ReplyItem } from './src/main/ets/model/resp
 export { ApiResponse, BaseResponse, EmptyResponse, StringResponse, BaseVideo, Stat,
   Owner, EmptyStat, EmptyBaseVideo } from './src/main/ets/model/response/Response'
 export { SearchDefaultResponse } from './src/main/ets/model/response/SearchDefaultResponse'
+export { NavResponse, NavData, WbiImg } from './src/main/ets/model/response/NavResponse'
+export { FingerSpiResponse, FingerSpiData } from './src/main/ets/model/response/FingerSpiResponse'
+export { QrCodeGenerateResponse, QrCodeData } from './src/main/ets/model/response/QrCodeGenerateResponse'
+export { QrPollResponse, QrPollData } from './src/main/ets/model/response/QrPollResponse'
 export { SearchResponse, SearchVideo, SearchVideoToBaseVideo } from './src/main/ets/model/response/SearchResponse'
 export { VideoPartsResponse } from './src/main/ets/model/response/VideoPartsResponse'
+export { DynamicFeedResponse, DynamicFeedData, DynamicItem, DynamicModules, ModuleAuthor,
+  ModuleDynamic, DynamicDesc, DynamicRichTextNode, DynamicMajor, MajorArchive, MajorArchiveStat,
+  MajorDraw, MajorDrawItem, MajorOpus, OpusTitle, MajorArticle, MajorPgc, MajorUgcSeason,
+  MajorLive, ModuleStat, ModuleStatCount, ModuleTag, DynamicFeedResult,
+  parseDurationTextToSeconds } from './src/main/ets/model/response/DynamicFeedResponse'
+export { SpaceAccInfoResponse, SpaceAccInfo, SpaceOfficial, SpaceUserProfile } from './src/main/ets/model/response/SpaceAccInfoResponse'
+export { SpaceArcSearchResponse, SpaceArcData, SpaceArcList, SpaceArcPage, SpaceArcItem,
+  SpaceArcResult } from './src/main/ets/model/response/SpaceArcSearchResponse'
+export { SeriesArchivesResponse, SeriesArchivesData, SeriesArchiveItem, SeriesStat,
+  SeriesOwner } from './src/main/ets/model/response/SeriesArchivesResponse'
 
 export { DataService } from './src/main/ets/network/Api'
 export { ApiConstants } from './src/main/ets/network/ApiConstants'
@@ -47,6 +64,9 @@ export { HomePullToRefresh } from './src/main/ets/components/home/HomePullToRefr
 export { PopularItemView } from './src/main/ets/components/home/PopularItem'
 export { RecommendItemView } from './src/main/ets/components/home/RecommendItem'
 export { SearchBar, HomeSearchBar } from './src/main/ets/components/home/SearchBar'
+
+export { DynamicItemView } from './src/main/ets/components/dynamic/DynamicItemView'
+export { DynamicVideoCard } from './src/main/ets/components/dynamic/DynamicVideoCard'
 
 export { ReplyDetailView } from './src/main/ets/components/video/ReplyDetail'
 export { ReplyItemView } from './src/main/ets/components/video/ReplyItem'

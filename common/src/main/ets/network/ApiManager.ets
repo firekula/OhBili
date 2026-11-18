@@ -17,6 +17,7 @@ import { RankingResponse } from '../model/response/RankingResponse';
 import { VideoPartsResponse } from '../model/response/VideoPartsResponse';
 import { DataSourceManager } from '../model/DataSourceManager';
 import { TaskManager } from './TaskManager';
+import { CrossDomainResult, parseCrossDomainResultCookies } from '../model/response/CrossDomainResult';
 import { BLog } from '../utils/BLog';
 import { ReplyCursor } from '../model/response/ReplyResponse';
 import { ReplyPage } from '../model/response/ReplyDetailResponse';
@@ -26,8 +27,30 @@ import { CountryList, CountryListResponse } from '../model/response/GenericCount
 import { SmsLoginResponse } from '../model/response/SmsLoginResponse';
 import { SendSmsCaptchaResponse } from '../model/response/SendSmsCaptchaResponse';
 import { CardInfoResponse } from '../model/response/UserCardInfoResponse';
+import { QrCodeData, QrCodeGenerateResponse } from '../model/response/QrCodeGenerateResponse';
+import { ApiResponse } from '../model/response/Response';
+import { SearchResponse } from '../model/response/SearchResponse';
+import { QrPollResponse } from '../model/response/QrPollResponse';
+import { NavData, NavResponse } from '../model/response/NavResponse';
+import { FingerSpiResponse } from '../model/response/FingerSpiResponse';
+import { LoginHelper } from '../utils/LoginHelper';
+import { WbiSigner } from '../utils/WbiSigner';
+import { StringUtil } from '../utils/StringUtil';
+import { DynamicFeedResult, DynamicItem } from '../model/response/DynamicFeedResponse';
+import { SpaceUserProfile } from '../model/response/SpaceAccInfoResponse';
+import { SpaceArcItem, SpaceArcResult } from '../model/response/SpaceArcSearchResponse';
+import { SeriesArchiveItem } from '../model/response/SeriesArchivesResponse';
 
 export class ApiManager {
+  /** 最近一次搜索请求是否被风控（-412 等），供搜索结果页区分"无结果"与"请求过于频繁" */
+  public lastSearchBlocked: boolean = false;
+  /** 推荐流会话级请求计数（AppStorage 会话级，不持久化），用于 fresh_idx_1h/fresh_idx_4h */
+  private static readonly KEY_RECOMMEND_SESSION_COUNT: string = 'ohBiliRecommendSessionCount';
+  /** 空间投稿每页项数 */
+  private static readonly SPACE_ARC_PAGE_SIZE: number = 30;
+  /** 空间投稿已加载页码（mid → pn，按用户隔离） */
+  private spaceArcPnMap: Map<string, number> = new Map<string, number>();
+
   private constructor() {
     DataSourceManager.initData();
   }
@@ -54,7 +77,24 @@ export class ApiManager {
 
   async requestRecommend(freshIdx: number, isFresh: boolean): Promise<boolean> {
     BLog.d(`requestRecommend freshIdx: ${freshIdx}, isFresh: ${isFresh}`);
-    var response = await TaskManager.getInstance().requestRecommend(freshIdx);
+    // 会话级请求计数（网页版 fresh_idx_1h/fresh_idx_4h 语义：随会话内刷新递增）
+    let sessionCount: number = AppStorage.get<number>(ApiManager.KEY_RECOMMEND_SESSION_COUNT) ?? 0;
+    sessionCount++;
+    AppStorage.setOrCreate(ApiManager.KEY_RECOMMEND_SESSION_COUNT, sessionCount);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    let ps: number = ApiConstants.itemNum;
+    let signed: Record<string, string> = await WbiSigner.signParams({
+      'ps': ps.toString(),
+      'fresh_idx_1h': sessionCount.toString(),
+      'fresh_idx_4h': sessionCount.toString(),
+      'fresh_idx': freshIdx.toString(),
+      'fresh_type': '4',
+      'feed_version': 'V2'
+    });
+    let wRid: string = signed['w_rid'] ?? '';
+    let wts: string = signed['wts'] ?? '';
+    var response = await TaskManager.getInstance().requestRecommend(cookie, ps,
+      sessionCount, sessionCount, freshIdx, 4, 'V2', wRid, wts);
     if (response.code == -1 ) {
       BLog.e("requestRecommend err=" + response.message);
     }
@@ -71,9 +111,10 @@ export class ApiManager {
 
   async requestPopular(pn: number): Promise<boolean> {
     BLog.d(`requestPopular pn: ${pn}`);
-    var response = await TaskManager.getInstance().requestPopular(pn);
-    if (response.code == -1 ) {
-      BLog.e("requestPopular err=" + response.message);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    var response = await TaskManager.getInstance().requestPopular(cookie, ApiConstants.popularPageSize, pn);
+    if (response.code != 0) {
+      BLog.e("requestPopular err, code=" + response.code + ", msg=" + response.message);
     }
     if (response.result != null) {
       BLog.d("requestPopular result: " + JSON.stringify(response.result));
@@ -161,20 +202,67 @@ export class ApiManager {
 
   async requestSearch(keyword: string, pn: number): Promise<boolean> {
     BLog.d(`requestSearch keyword: ${keyword}, pn: ${pn}`);
-    let cookies = 'b_ut=7;i-wanna-go-back=-1;b_nut=1689340641;buvid3=D1834A0C-8619-E71F-A594-05F6B806551041895infoc;innersign=0';
-    var response = await TaskManager.getInstance().requestSearch(cookies, "video", keyword, pn);
+    // 搜索为 gaia 风控敏感接口：仅携带登录 Cookie（新铸 buvid 无浏览历史，携带反而触发 v_voucher 风控）
+    let cookie: string = LoginHelper.buildLoginCookieHeader();
+    let signed: Record<string, string> = await WbiSigner.signParams({
+      'search_type': 'video',
+      'keyword': keyword,
+      'page': pn.toString()
+    });
+    let wRid: string = signed['w_rid'] ?? '';
+    let wts: string = signed['wts'] ?? '';
+    BLog.i("requestSearch signed, wRid=" + wRid + ", wts=" + wts
+      + ", cookieLen=" + cookie.length + ", keyword=" + keyword);
+    // retrofit 库 buildURL 不做 URL 编码：keyword 需预编码后传参（签名已按 encodeURIComponent 后的值计算）
+    let encodedKeyword: string = encodeURIComponent(keyword);
+    let searchPromise: Promise<ApiResponse<SearchResponse>> =
+      TaskManager.getInstance().requestSearch(cookie, "video", encodedKeyword, pn, wRid, wts);
+    // 兜底超时：防止底层 Promise 永不 settle 导致页面永久停留在"数据加载中"
+    let timeoutPromise: Promise<never> = new Promise<never>((resolve, reject) => {
+      setTimeout(() => {
+        reject(new Error('requestSearch timeout 20s'));
+      }, 20000);
+    });
+    let response: ApiResponse<SearchResponse>;
+    try {
+      response = await Promise.race([searchPromise, timeoutPromise]);
+      BLog.i("requestSearch resp, code=" + response.code + ", msg=" + response.message);
+    } catch (err) {
+      BLog.e("requestSearch failed, err=" + err);
+      this.lastSearchBlocked = false;
+      return false;
+    }
+    let blocked: boolean = false;
     if (response.code == -1 ) {
       BLog.e("requestSearch err=" + response.message);
+      // 风控（HTTP 412）时请求层抛错进入 catch，message 携带状态码
+      blocked = response.message != null && response.message.indexOf('412') >= 0;
     }
     if (response.result != null) {
       BLog.d("requestSearch result: " + JSON.stringify(response.result));
-      if (pn == 1) {
-        DataSourceManager.getSearchSource().setData(response.result.data.result);
-      } else {
-        DataSourceManager.getSearchSource().addAllData(response.result.data.result);
+      let bizCode: number = response.result.code;
+      if (bizCode == -412 || bizCode == -799) {
+        BLog.e("requestSearch risk control, bizCode=" + bizCode);
+        blocked = true;
+      }
+      if (response.result.data != null) {
+        // 风控（gaia/vgate）：200 + data 仅含 v_voucher，无 result 数据
+        if (response.result.data.v_voucher != null) {
+          BLog.e("requestSearch risk control, v_voucher=" + response.result.data.v_voucher);
+          blocked = true;
+        }
+        if (response.result.data.result != null) {
+          if (pn == 1) {
+            DataSourceManager.getSearchSource().setData(response.result.data.result);
+          } else {
+            DataSourceManager.getSearchSource().addAllData(response.result.data.result);
+          }
+        }
       }
     }
-    return response != null;
+    this.lastSearchBlocked = blocked;
+    BLog.i("requestSearch done, blocked=" + blocked);
+    return response.code != -1;
   }
 
   async requestPageList(bvid: string): Promise<VideoPartsResponse> {
@@ -285,5 +373,278 @@ export class ApiManager {
       BLog.d("requestUserCardInfo result:" + JSON.stringify(response.result));
     }
     return response.result;
+  }
+
+  async requestQrCode(): Promise<QrCodeData> {
+    BLog.d("requestQrCode");
+    var response = await TaskManager.getInstance().requestQrCodeGenerate();
+    if (response.code == -1) {
+      BLog.e("requestQrCode err=" + response.message);
+    }
+    var result: QrCodeGenerateResponse = response.result;
+    if (result != null && result.data != null) {
+      BLog.d("requestQrCode result: " + JSON.stringify(result.data));
+      return result.data;
+    }
+    return null;
+  }
+
+  async pollQrStatus(qrcodeKey: string): Promise<QrPollResponse> {
+    BLog.d("pollQrStatus qrcodeKey: " + qrcodeKey);
+    var response = await TaskManager.getInstance().requestQrPoll(qrcodeKey);
+    if (response.code == -1) {
+      BLog.e("pollQrStatus err=" + response.message);
+    }
+    if (response.result != null) {
+      BLog.d("pollQrStatus result: " + JSON.stringify(response.result));
+    }
+    return response.result;
+  }
+
+  async requestNavInfo(cookie: string): Promise<NavData> {
+    BLog.d("requestNavInfo");
+    var response = await TaskManager.getInstance().requestNavInfo(cookie);
+    if (response.code == -1) {
+      BLog.e("requestNavInfo err=" + response.message);
+    }
+    var result: NavResponse = response.result;
+    if (result != null && result.data != null) {
+      BLog.d("requestNavInfo result: " + JSON.stringify(result.data));
+      return result.data;
+    }
+    return null;
+  }
+
+  /**
+   * 获取 Web 端设备指纹 Cookie（buvid3/buvid4）；失败返回 null。
+   */
+  async requestFingerSpi(): Promise<FingerSpiResponse | null> {
+    BLog.d("requestFingerSpi");
+    const response: ApiResponse<FingerSpiResponse> = await TaskManager.getInstance().requestFingerSpi();
+    if (response.code == -1) {
+      BLog.e("requestFingerSpi err=" + response.message);
+    }
+    if (response.result != null) {
+      BLog.d("requestFingerSpi result: " + JSON.stringify(response.result));
+      return response.result;
+    }
+    return null;
+  }
+
+  /**
+   * GET crossDomain URL 以 ticket 兑换登录 Cookie（关闭重定向，读 302 的 Set-Cookie）。
+   * 失败时返回的 CrossDomainResult 内含 errorMessage/原始响应，便于诊断。
+   */
+  async exchangeCrossDomainTicket(url: string, cookie: string): Promise<CrossDomainResult> {
+    BLog.d("exchangeCrossDomainTicket url: " + url);
+    let result: CrossDomainResult = new CrossDomainResult();
+    try {
+      result = await TaskManager.getInstance().exchangeCrossDomainTicket(url, cookie);
+    } catch (err) {
+      BLog.e("exchangeCrossDomainTicket err=" + err);
+      result.errorMessage = err + '';
+      return result;
+    }
+    BLog.d("exchangeCrossDomainTicket code=" + result.responseCode
+      + " location=" + result.location
+      + " setCookie=[" + result.setCookieRaw + "]"
+      + " cookiesField=[" + result.cookiesField + "]"
+      + " body=[" + result.bodySnippet + "]"
+      + " err=" + result.errorMessage);
+    // 主线程侧解析 Set-Cookie / cookies 字段填充 cookieParams
+    parseCrossDomainResultCookies(result);
+    BLog.d("exchangeCrossDomainTicket cookieParams: " + JSON.stringify(result.cookieParams));
+    return result;
+  }
+
+  /**
+   * 拉取关注 UP 主动态流（offset 游标分页）：
+   * 成功写入 DynamicDataSource（刷新清空重填 / 追加按 id_str 去重）；
+   * 登录失效（业务码 -101）返回 loginExpired 标志，由页面引导重新登录。
+   */
+  async requestDynamicFeed(offset: string, isRefresh: boolean): Promise<DynamicFeedResult> {
+    BLog.d("requestDynamicFeed offset=" + offset + ", isRefresh=" + isRefresh);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    let response = await TaskManager.getInstance().requestDynamicFeed(cookie, offset);
+    if (response.code == -1) {
+      BLog.e("requestDynamicFeed err=" + response.message);
+      return new DynamicFeedResult(false, false, false, '');
+    }
+    if (response.result == null) {
+      return new DynamicFeedResult(false, false, false, '');
+    }
+    let bizCode: number = response.result.code;
+    if (bizCode == -101) {
+      BLog.w("requestDynamicFeed login expired");
+      return new DynamicFeedResult(false, true, false, '');
+    }
+    if (bizCode != 0 || response.result.data == null) {
+      BLog.e("requestDynamicFeed biz err, code=" + bizCode);
+      return new DynamicFeedResult(false, false, false, '');
+    }
+    let data = response.result.data;
+    let items: DynamicItem[] = data.items ?? [];
+    // 调试：统计本页转发类动态数量（orig 非空）
+    let origCount: number = 0;
+    items.forEach((item: DynamicItem) => {
+      if (item.modules != null && item.modules.module_dynamic != null
+        && item.modules.module_dynamic.orig != null) {
+        origCount++;
+      }
+    });
+    BLog.d("requestDynamicFeed page items=" + items.length + ", origCount=" + origCount);
+    let source = DataSourceManager.getDynamicSource();
+    if (isRefresh) {
+      source.setData(items);
+    } else {
+      // 追加时按 id_str 去重，避免游标重叠导致重复条目
+      let existingIds: Set<string> = new Set<string>();
+      source.getAllData().forEach((item: DynamicItem) => {
+        existingIds.add(item.id_str);
+      });
+      let newItems: DynamicItem[] = [];
+      items.forEach((item: DynamicItem) => {
+        if (!existingIds.has(item.id_str)) {
+          newItems.push(item);
+        }
+      });
+      source.addAllData(newItems);
+    }
+    return new DynamicFeedResult(true, false, data.has_more ?? false, data.offset ?? '');
+  }
+
+  /**
+   * 拉取用户空间资料并组装 SpaceUserProfile：
+   * acc/info（WBI 对 {mid} 签名）提供资料；card 接口提供关注/粉丝/获赞/投稿数；
+   * acc/info 失败时以 card 字段兜底（profileLoaded=false，签名/等级占位）；
+   * 双双失败返回 null（页面展示错误态）。
+   */
+  async requestSpaceInfo(mid: number): Promise<SpaceUserProfile | null> {
+    BLog.d("requestSpaceInfo mid=" + mid);
+    let profile: SpaceUserProfile = new SpaceUserProfile(mid);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    let signed: Record<string, string> = await WbiSigner.signParams({
+      'mid': mid.toString()
+    });
+    let accResp = await TaskManager.getInstance().requestSpaceAccInfo(cookie, mid,
+      signed['w_rid'] ?? '', signed['wts'] ?? '');
+    if (accResp.code != -1 && accResp.result != null && accResp.result.code == 0
+      && accResp.result.data != null) {
+      let acc = accResp.result.data;
+      profile.name = acc.name ?? '';
+      profile.face = acc.face ?? '';
+      profile.sign = acc.sign ?? '';
+      profile.level = acc.level ?? 0;
+      profile.profileLoaded = true;
+    } else {
+      BLog.w("requestSpaceInfo acc/info failed, code="
+        + (accResp.result == null ? accResp.code : accResp.result.code));
+    }
+    let cardResp: CardInfoResponse = await this.requestUserCardInfo(mid);
+    let cardLoaded: boolean = false;
+    if (cardResp != null && cardResp.code == 0 && cardResp.data != null) {
+      let card = cardResp.data;
+      profile.follower = card.follower ?? 0;
+      profile.likeNum = card.likeNum ?? 0;
+      profile.archiveCount = card.archive_count ?? 0;
+      if (card.card != null) {
+        profile.following = card.card.friend ?? 0;
+        if (!profile.profileLoaded) {
+          // acc/info 失败：以 card 兜底资料（签名/等级缺失由页面占位）
+          if (profile.name === '') {
+            profile.name = card.card.name ?? '';
+          }
+          if (profile.face === '') {
+            profile.face = card.card.face ?? '';
+          }
+          profile.sign = card.card.sign ?? '';
+          if (card.card.level_info != null) {
+            profile.level = card.card.level_info.current_level ?? 0;
+          }
+        }
+      }
+      cardLoaded = true;
+    } else {
+      BLog.w("requestSpaceInfo card failed");
+    }
+    if (!profile.profileLoaded && !cardLoaded) {
+      return null;
+    }
+    return profile;
+  }
+
+  /**
+   * 拉取用户投稿视频列表并写入 SpaceArcDataSource（按 mid 隔离）：
+   * 主接口 arc/search（WBI 全参数签名），风控/异常时降级 series/recArchivesByKeywords；
+   * 刷新清空重填；返回是否还有更多。
+   */
+  async requestSpaceArchives(mid: number, isRefresh: boolean): Promise<SpaceArcResult> {
+    BLog.d("requestSpaceArchives mid=" + mid + ", isRefresh=" + isRefresh);
+    let midKey: string = mid.toString();
+    let pn: number = isRefresh ? 1 : (this.spaceArcPnMap.get(midKey) ?? 0) + 1;
+    let cookie: string = LoginHelper.buildCookieHeader();
+    let signed: Record<string, string> = await WbiSigner.signParams({
+      'mid': midKey,
+      'pn': pn.toString(),
+      'ps': ApiManager.SPACE_ARC_PAGE_SIZE.toString(),
+      'order': 'pubdate'
+    });
+    let resp = await TaskManager.getInstance().requestSpaceArcSearch(cookie, mid, pn,
+      ApiManager.SPACE_ARC_PAGE_SIZE, 'pubdate', signed['w_rid'] ?? '', signed['wts'] ?? '');
+    let bizCode: number = (resp.result == null) ? -1 : resp.result.code;
+    if (resp.code != -1 && bizCode == 0 && resp.result.data != null
+      && resp.result.data.list != null) {
+      let vlist: SpaceArcItem[] = resp.result.data.list.vlist ?? [];
+      let source = DataSourceManager.getSpaceArcSource(midKey);
+      if (isRefresh) {
+        source.setData(vlist);
+      } else {
+        source.addAllData(vlist);
+      }
+      this.spaceArcPnMap.set(midKey, pn);
+      let count: number = resp.result.data.page == null ? 0 : (resp.result.data.page.count ?? 0);
+      let hasMore: boolean = pn * ApiManager.SPACE_ARC_PAGE_SIZE < count;
+      return new SpaceArcResult(true, hasMore);
+    }
+    // 降级：series/recArchivesByKeywords（-352 风控 / 请求异常 / 数据缺失）
+    BLog.w("requestSpaceArchives arc/search failed, code=" + bizCode + ", fallback to series");
+    let seriesResp = await TaskManager.getInstance().requestSeriesArchives(mid, pn,
+      ApiManager.SPACE_ARC_PAGE_SIZE);
+    if (seriesResp.code != -1 && seriesResp.result != null && seriesResp.result.code == 0
+      && seriesResp.result.data != null && seriesResp.result.data.archives != null) {
+      let archives: SeriesArchiveItem[] = seriesResp.result.data.archives;
+      let items: SpaceArcItem[] = [];
+      archives.forEach((item: SeriesArchiveItem) => {
+        items.push(ApiManager.seriesItemToSpaceArcItem(item));
+      });
+      let source = DataSourceManager.getSpaceArcSource(midKey);
+      if (isRefresh) {
+        source.setData(items);
+      } else {
+        source.addAllData(items);
+      }
+      this.spaceArcPnMap.set(midKey, pn);
+      let hasMore: boolean = items.length >= ApiManager.SPACE_ARC_PAGE_SIZE;
+      return new SpaceArcResult(true, hasMore);
+    }
+    BLog.e("requestSpaceArchives series fallback failed too");
+    return new SpaceArcResult(false, false);
+  }
+
+  /**
+   * SeriesArchiveItem → SpaceArcItem 归一化（duration 秒 → "mm:ss" 文本）
+   */
+  private static seriesItemToSpaceArcItem(item: SeriesArchiveItem): SpaceArcItem {
+    let arcItem: SpaceArcItem = {
+      bvid: item.bvid,
+      title: item.title ?? '',
+      pic: item.pic ?? '',
+      created: item.pubdate ?? 0,
+      length: StringUtil.parseSecondToVideoDuration(item.duration ?? 0),
+      play: item.sta == null ? 0 : (item.sta.view ?? 0),
+      author: item.owner == null ? '' : (item.owner.name ?? ''),
+      description: ''
+    };
+    return arcItem;
   }
 }
