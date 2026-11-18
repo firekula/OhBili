@@ -25,13 +25,17 @@ import {
 import { StringUtil } from '../utils/StringUtil';
 
 let mIjkMediaPlayer = IjkMediaPlayer.getInstance();
-let updateProgressTimer;
 
 export class IjkPlayer extends IPlayer {
   private mState: IPlayStatus = IPlayStatus.INIT;
   private mUrl: string;
   private mHeaders: Map<string, string>
   private mContext: object = null;
+  /** 已释放标记：release 后所有回调（onPrepared/onSeekComplete 等）一律不再起播 */
+  private isReleased: boolean = false;
+  /** prepared 后是否自动起播（页面隐藏时置 false，防止被覆盖时自动出声） */
+  private autoPlay: boolean = true;
+  private updateProgressTimer: number = -1;
 
   public initPlay(context: object): Promise<void> {
     this.mContext = context;
@@ -61,7 +65,8 @@ export class IjkPlayer extends IPlayer {
     //停止预读的最小帧数
     mIjkMediaPlayer.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "min-frames", "100");
     //启动预加载
-    mIjkMediaPlayer.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "start-on-prepared", "1");
+    mIjkMediaPlayer.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "start-on-prepared",
+      this.autoPlay ? "1" : "0");
     // 设置无缓冲，这是播放器的缓冲区，有数据就播放
     mIjkMediaPlayer.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "packet-buffering", "0");
     //跳帧处理,放CPU处理较慢时，进行跳帧处理，保证播放流程，画面和声音同步
@@ -102,8 +107,14 @@ export class IjkPlayer extends IPlayer {
     let mOnPreparedListener: OnPreparedListener = {
       onPrepared() {
         console.info("IjkPlayer updateState");
+        if (thisClass.isReleased) {
+          return;
+        }
         thisClass.updateState(IPlayStatus.PREPARED);
-        thisClass.updateState(IPlayStatus.PLAY);
+        if (thisClass.autoPlay) {
+          // 页面隐藏（autoPlay=false）时 native start-on-prepared=0 未真正起播，不能谎报 PLAY
+          thisClass.updateState(IPlayStatus.PLAY);
+        }
         // thisClass.play();
       }
     }
@@ -129,6 +140,9 @@ export class IjkPlayer extends IPlayer {
     let mOnSeekCompleteListener: OnSeekCompleteListener = {
       onSeekComplete() {
         console.info("IjkPlayer onSeekComplete");
+        if (thisClass.isReleased || !thisClass.autoPlay) {
+          return;
+        }
         thisClass.play();
       }
     }
@@ -168,6 +182,9 @@ export class IjkPlayer extends IPlayer {
   }
 
   public setDataSource(url: string, headers?: Map<string, string>) {
+    if (this.isReleased) {
+      return;
+    }
     this.mUrl = url;
     this.mHeaders = headers;
     this.updateState(IPlayStatus.INIT);
@@ -175,6 +192,9 @@ export class IjkPlayer extends IPlayer {
   }
 
   public play() {
+    if (this.isReleased) {
+      return;
+    }
     if (this.mUrl == null) {
       this.updateState(IPlayStatus.ERROR);
       return;
@@ -194,6 +214,9 @@ export class IjkPlayer extends IPlayer {
   }
 
   public pause() {
+    if (this.isReleased) {
+      return;
+    }
     if (mIjkMediaPlayer.isPlaying()) {
       mIjkMediaPlayer.pause();
       this.updateState(IPlayStatus.PAUSE);
@@ -202,13 +225,37 @@ export class IjkPlayer extends IPlayer {
   }
 
   public stop() {
+    if (this.isReleased) {
+      return;
+    }
     this.updateState(IPlayStatus.DONE);
     mIjkMediaPlayer.stop();
     mIjkMediaPlayer.release();
     this.stopProgressTask();
   }
 
+  public release(): void {
+    if (this.isReleased) {
+      return;
+    }
+    this.isReleased = true;
+    this.stopProgressTask();
+    try {
+      mIjkMediaPlayer.stop();
+      mIjkMediaPlayer.release();
+    } catch (error) {
+      console.warn(`IjkPlayer release failed: ${JSON.stringify(error)}`);
+    }
+  }
+
+  public setAutoPlay(auto: boolean): void {
+    this.autoPlay = auto;
+  }
+
   public seekTo(value: number) {
+    if (this.isReleased) {
+      return;
+    }
     mIjkMediaPlayer.seekTo(Math.floor(value) + "");
   }
 
@@ -217,6 +264,9 @@ export class IjkPlayer extends IPlayer {
   }
 
   public getDuration(): number {
+    if (this.isReleased) {
+      return 0;
+    }
     return mIjkMediaPlayer.getDuration();
   }
 
@@ -262,13 +312,14 @@ export class IjkPlayer extends IPlayer {
   private startProgressTask() {
     let thisClass = this;
     console.info("IjkPlayer startProgressTask");
-    updateProgressTimer = setInterval(function () {
+    this.updateProgressTimer = setInterval(function () {
       thisClass.setProgress();
     }, 1000);
   }
 
   private stopProgressTask() {
     console.info("IjkPlayer stopProgressTask");
-    clearInterval(updateProgressTimer);
+    clearInterval(this.updateProgressTimer);
+    this.updateProgressTimer = -1;
   }
 }

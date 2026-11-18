@@ -53,6 +53,12 @@ export abstract class IPlayer {
 
     abstract seekTo(value: number): void
 
+    /** 页面销毁时释放播放器资源（幂等；进行中的异步 prepare 完成后不得再起播） */
+    abstract release(): void
+
+    /** 设置 prepared 后是否自动起播（页面隐藏时置 false，防止后台/被覆盖时自动出声） */
+    abstract setAutoPlay(auto: boolean): void
+
     abstract setScreenOn(on: boolean): void
 
     abstract getDuration(): number

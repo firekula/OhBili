@@ -87,6 +87,11 @@ struct VideoPlayer {
   onPageShow() {
     this.pageState = "onPageShow";
     AppStorage.SetOrCreate('bvid', this.vInfo.bvid);
+    // 多视频页叠栈时 replyCount 为全局共享键，回到本页时以本页数据恢复，
+    // 避免 A 页评论数显示成 B 页的（同时驱动 VideoReply 重建绑定本页弹幕/评论源）
+    if (this.vInfo.stat.reply != undefined) {
+      this.replyCount = this.vInfo.stat.reply;
+    }
   }
 
   onPageHide() {

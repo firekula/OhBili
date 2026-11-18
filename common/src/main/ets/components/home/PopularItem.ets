@@ -19,7 +19,6 @@ import { BaseVideo } from './../../model/response/Response'
 @Component
 export struct PopularItemView {
   private item: BaseVideo
-  private isReplaceUrl: boolean = false;
 
   build() {
     Row() {
@@ -102,11 +101,8 @@ export struct PopularItemView {
       }.width('50%').aspectRatio(16 / 9)
     }
     .onClick(() => {
-      if (this.isReplaceUrl) {
-        router.replaceUrl({ url: 'pages/Video', params: { vInfo: this.item } });
-      } else {
-        router.pushUrl({ url: 'pages/Video', params: { vInfo: this.item } });
-      }
+      // 视频间跳转一律 push 叠栈：返回时回到上一个视频而非直接回首页
+      router.pushUrl({ url: 'pages/Video', params: { vInfo: this.item } });
     })
     .margin({ top: 8, bottom: 8 })
   }

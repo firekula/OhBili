@@ -42,7 +42,7 @@ export struct VideoOverview {
               Column() {
                 Flex().width('100%').height(1)
                   .backgroundColor('#ffeeeeee')
-                PopularItemView({ item: item, isReplaceUrl: true })
+                PopularItemView({ item: item })
               }.padding({ left: 16, right: 16 })
             }
           }

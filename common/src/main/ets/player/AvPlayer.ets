@@ -17,7 +17,7 @@ import fs from '@ohos.file.fs';
 import { BusinessError } from '@ohos.base';
 import { StringUtil } from '../utils/StringUtil';
 
-let updateProgressTimer;
+let xcSeq: number = 0;
 
 export class AvPlayer extends IPlayer {
     xController: XComponentController = new XComponentController()
@@ -27,6 +27,15 @@ export class AvPlayer extends IPlayer {
     private isSeek: boolean = true; // 用于区分模式是否支持seek操作
     /** 本地播放文件句柄（fdSrc 播放期间需保持打开，切换数据源时关闭上一个） */
     private localFd: number = -1;
+    /** 已释放标记：release 后所有异步回调（prepare/seekDone 等）一律不再起播 */
+    private isReleased: boolean = false;
+    /** prepared 后是否自动起播（页面隐藏时置 false，防止被覆盖时自动出声） */
+    private autoPlay: boolean = true;
+    /** 播放实例标识（多视频页叠栈时保证 XComponent id 唯一） */
+    private myId: string = "xcomponent_" + (xcSeq++);
+    /** 本实例的 playId（原为空实现导致上层 bvid==getPlayId() 恒 false，离开页面从不停止播放） */
+    private playId: string = "";
+    private updateProgressTimer: number = -1;
 
     public initPlay(context: object): Promise<void> {
         this.xController.setXComponentSurfaceSize({surfaceWidth:1920,surfaceHeight:1080});
@@ -34,6 +43,12 @@ export class AvPlayer extends IPlayer {
         let thisClass = this;
         var promise = new Promise<void>(function (resolve, reject) {
             media.createAVPlayer().then(player => {
+                if (thisClass.isReleased) {
+                    // 页面已销毁：直接释放新建实例，避免起播出"幽灵"声音
+                    player.release();
+                    resolve();
+                    return;
+                }
                 thisClass.avPlayer = player;
                 thisClass.setAVPlayerCallback();
                 resolve();
@@ -51,10 +66,13 @@ export class AvPlayer extends IPlayer {
     }
 
     public id(): string {
-        return "xcomponent";
+        return this.myId;
     }
 
     public setDataSource(url: string, headers?:Map<string,string>) {
+        if (this.isReleased || !this.avPlayer) {
+            return;
+        }
         this.isSeek = false;
         if (url.startsWith('/')) {
             // 本地文件：fs.open 取 fd 走 fdSrc 播放（AVPlayer.url 不支持沙箱绝对路径）
@@ -110,18 +128,52 @@ export class AvPlayer extends IPlayer {
     }
 
     public play() {
+        if (this.isReleased || !this.avPlayer) {
+            return;
+        }
         this.avPlayer.play();
     }
 
     public pause() {
-        this.avPlayer.pause();
+        if (this.isReleased || !this.avPlayer) {
+            return;
+        }
+        if (this.avPlayer.state === 'playing') {
+            this.avPlayer.pause();
+        }
     }
 
     public stop() {
+        if (this.isReleased || !this.avPlayer) {
+            return;
+        }
         this.avPlayer.stop();
     }
 
+    public release(): void {
+        if (this.isReleased) {
+            return;
+        }
+        this.isReleased = true;
+        this.stopProgressTask();
+        this.closeLocalFile();
+        try {
+            if (this.avPlayer) {
+                this.avPlayer.release();
+            }
+        } catch (error) {
+            console.warn(`AvPlayer release failed: ${JSON.stringify(error)}`);
+        }
+    }
+
+    public setAutoPlay(auto: boolean): void {
+        this.autoPlay = auto;
+    }
+
     public seekTo(value: number) {
+        if (this.isReleased || !this.avPlayer) {
+            return;
+        }
         this.avPlayer.seek(value);
     }
 
@@ -145,14 +197,18 @@ export class AvPlayer extends IPlayer {
     }
 
     public getDuration(): number {
+        if (this.isReleased || !this.avPlayer) {
+            return 0;
+        }
         return this.avPlayer.duration;
     }
 
     public setPlayId(playId: string) {
+        this.playId = playId;
     }
 
     public getPlayId(): string {
-        return "";
+        return this.playId;
     }
 
     // 注册avplayer回调函数
@@ -160,12 +216,19 @@ export class AvPlayer extends IPlayer {
         // seek操作结果回调函数
         this.avPlayer.on('seekDone', (seekDoneTime) => {
             console.info(`AVPlayer seek succeeded, seek time is ${seekDoneTime}`);
+            // 页面已销毁或隐藏时不再自动恢复播放，防止"幽灵"起播
+            if (this.isReleased || !this.autoPlay) {
+                return;
+            }
             this.avPlayer.play();
         })
         // error回调监听函数,当avPlayer在操作过程中出现错误时调用reset接口触发重置流程
         this.avPlayer.on('error', (err) => {
-            this.updateState(IPlayStatus.ERROR);
             console.error(`Invoke avPlayer failed, code is ${err.code}, message is ${err.message}`);
+            if (this.isReleased) {
+                return;
+            }
+            this.updateState(IPlayStatus.ERROR);
             this.avPlayer.reset(); // 调用reset重置资源，触发idle状态
         })
         // 状态机变化回调函数
@@ -176,8 +239,13 @@ export class AvPlayer extends IPlayer {
                     this.avPlayer.release(); // 调用release接口销毁实例对象
                     break;
                 case 'initialized': // avplayer 设置播放源后触发该状态上报
-                    this.updateState(IPlayStatus.INIT);
                     console.info('AVPlayerstate initialized called.');
+                    if (this.isReleased) {
+                        // 页面已销毁：不再 prepare，直接释放，防止 prepare 完成后自动起播
+                        this.avPlayer.release();
+                        break;
+                    }
+                    this.updateState(IPlayStatus.INIT);
                     this.avPlayer.surfaceId = this.surfaceId; // 设置显示画面，当播放的资源为纯音频时无需设置
                     this.avPlayer.prepare().then(() => {
                         console.info('AVPlayer prepare succeeded.');
@@ -187,6 +255,10 @@ export class AvPlayer extends IPlayer {
                     break;
                 case 'prepared': // prepare调用成功后上报该状态机
                     console.info('AVPlayer state prepared called.');
+                    if (this.isReleased) {
+                        this.avPlayer.release();
+                        break;
+                    }
                     this.updateState(IPlayStatus.PREPARED);
                     if (this.mOnSizeChangeCallback) {
                         this.mOnSizeChangeCallback.OnSizeChange(this.avPlayer.width, this.avPlayer.height);
@@ -194,7 +266,10 @@ export class AvPlayer extends IPlayer {
                     // surface 缓冲区初始为 1920x1080，与视频实际宽高比不一致可能导致拉伸，
                     // 播放前把缓冲区调整为视频实际宽高比（最大边 1920 封顶）
                     this.updateSurfaceSize(this.avPlayer.width, this.avPlayer.height);
-                    this.avPlayer.play(); // 调用播放接口开始播放
+                    // 页面隐藏（被其他视频页覆盖）时不自动起播，防止上一个视频在后台出声
+                    if (this.autoPlay) {
+                        this.avPlayer.play(); // 调用播放接口开始播放
+                    }
                     break;
                 case 'playing': // play成功调用后触发该状态机上报
                     this.updateState(IPlayStatus.PLAY);
@@ -217,7 +292,9 @@ export class AvPlayer extends IPlayer {
                     this.updateState(IPlayStatus.DONE);
                     this.stopProgressTask();
                     console.info('AVPlayer state stopped called.');
-                    this.avPlayer.reset(); // 调用reset接口初始化avplayer状态
+                    if (!this.isReleased) {
+                        this.avPlayer.reset(); // 调用reset接口初始化avplayer状态
+                    }
                     break;
                 case 'released':
                     console.info('AVPlayer state released called.');
@@ -263,7 +340,7 @@ export class AvPlayer extends IPlayer {
 
     private startProgressTask() {
         let thisClass = this;
-        updateProgressTimer = setInterval(function () {
+        this.updateProgressTimer = setInterval(function () {
             console.info("AVPlayer startProgressTask");
             thisClass.setProgress();
         }, 1000);
@@ -271,6 +348,7 @@ export class AvPlayer extends IPlayer {
 
     private stopProgressTask() {
         console.info("AVPlayer stopProgressTask");
-        clearInterval(updateProgressTimer);
+        clearInterval(this.updateProgressTimer);
+        this.updateProgressTimer = -1;
     }
 }

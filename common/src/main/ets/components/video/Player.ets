@@ -94,6 +94,12 @@ export struct PlayerView {
     }
   };
   @State @Watch('onDanmakuPnUpdated') danmakuPn: number = 1;
+  /** 页面已销毁（返回/替换）：所有异步续体（playurl/prepare 等）一律失效，不再起播 */
+  private mDestroyed: boolean = false;
+  /** 页面当前是否可见（onPageShow/onPageHide）：隐藏时 prepared 不自动起播 */
+  private mActive: boolean = true;
+  /** 隐藏时正在播放：回到页面后恢复播放 */
+  private mResumeOnShow: boolean = false;
 
   private createParser(source: ProtoSource): BaseDanmakuParser {
     let parser: BaseDanmakuParser = new DanmakuParser();
@@ -105,41 +111,75 @@ export struct PlayerView {
     BLog.i('BiliPlayer bvid:' + this.bvid + ', pageState:' + this.pageState);
     switch (this.pageState) {
       case "onPageShow":
+        this.mActive = true;
+        this.player.setAutoPlay(true);
         if (!this.mFirst) {
           if (this.bvid == this.player.getPlayId()) {
-            BLog.i('BiliPlayer play');
-            this.player.play();
+            // 本页播放器实例仍在：恢复播放（仅隐藏时在播的才恢复，原先暂停的保持暂停）
+            if (this.mResumeOnShow) {
+              this.mResumeOnShow = false;
+              BLog.i('BiliPlayer resume play on show');
+              this.player.play();
+            } else if (this.mState == IPlayStatus.PREPARED) {
+              // 隐藏期间加载完成但被 autoPlay=false 禁止起播（从未渲染画面）：
+              // 回到页面直接播放，修复回到首个视频黑屏问题
+              BLog.i('BiliPlayer start prepared video on show');
+              this.player.play();
+            }
           } else {
-            BLog.i('BiliPlayer initPlay');
+            // 播放器已被其他视频页复用/释放（真机 IjkPlayer 单例场景）：整链路重新拉起
+            BLog.i('BiliPlayer initPlay on show');
+            this.mResumeOnShow = false;
             this.player.setPlayId(this.bvid);
             this.player.initPlay(this.mPlayContext).then(_ => {
-              this.initPlay(this.mPlayUrl);
+              if (!this.mDestroyed) {
+                this.initPlay(this.mPlayUrl);
+              }
             });
           }
         }
         break;
       case "onPageHide":
-        this.player.pause();
+        // 页面被覆盖（进入下一个视频页/其他页面）或退后台：停止自动起播并暂停当前播放，
+        // 防止上一个视频在后台继续出声
+        this.mActive = false;
+        this.player.setAutoPlay(false);
+        if (this.mState == IPlayStatus.PLAY) {
+          this.mResumeOnShow = true;
+          this.player.pause();
+        }
         break;
       case "aboutToDisappear":
-        if (this.bvid == this.player.getPlayId()) {
-          BLog.i('BiliPlayer aboutToDisappear');
-          this.player.setScreenOn(false);
-          if (this.mState != IPlayStatus.INIT) {
-            this.player.stop();
-          }
-        }
-        if (this.mIsFullScreen) {
-          // 退出全屏（含窗口旋转、系统栏恢复、解锁），由 onFullScreenUpdated 统一处理
-          this.mIsFullScreen = false;
-        } else if (!this.isPortrait) {
-          WindowManager.changeWindowDirection(window.Orientation.PORTRAIT)
-          this.isPortrait = true
-          WindowManager.setFullScreen(this.isPortrait);
-        }
+        this.releasePlayer();
         break;
       default:
         break;
+    }
+  }
+
+  /**
+   * 页面销毁兜底清理：即使 pageState @Watch 未触发也必须停播释放（幂等）
+   */
+  aboutToDisappear() {
+    this.releasePlayer();
+  }
+
+  private releasePlayer(): void {
+    if (this.mDestroyed) {
+      return;
+    }
+    this.mDestroyed = true;
+    this.mActive = false;
+    BLog.i('BiliPlayer releasePlayer bvid:' + this.bvid);
+    this.player.setAutoPlay(false);
+    this.player.release();
+    if (this.mIsFullScreen) {
+      // 退出全屏（含窗口旋转、系统栏恢复、解锁），由 onFullScreenUpdated 统一处理
+      this.mIsFullScreen = false;
+    } else if (!this.isPortrait) {
+      WindowManager.changeWindowDirection(window.Orientation.PORTRAIT)
+      this.isPortrait = true
+      WindowManager.setFullScreen(this.isPortrait);
     }
   }
 
@@ -219,6 +259,10 @@ export struct PlayerView {
         .onLoad((context) => {
           this.mPlayContext = context;
           this.player.initPlay(this.mPlayContext).then(_ => {
+            if (this.mDestroyed) {
+              // 页面已销毁：加载完成后不再起播（防"幽灵"播放）
+              return;
+            }
             if (this.localPath != '') {
               // 本地播放：跳过 playurl/弹幕网络请求，直接播本地文件
               this.mPlayUrl = this.localPath;
@@ -348,6 +392,9 @@ export struct PlayerView {
 
   private getPageList(bvid: string) {
     ApiManager.getInstance().requestPageList(bvid).then((resp: VideoPartsResponse) => {
+      if (this.mDestroyed) {
+        return;
+      }
       this.cid = resp.data[0].cid;
       this.getDanmaku(true);
       this.getPlayUrl(this.bvid, this.cid);
@@ -357,6 +404,9 @@ export struct PlayerView {
   private getDanmaku(isInit: boolean) {
     BLog.i("getDanmaku index: " + this.danmakuPn + ", isInit: " + isInit);
     ApiManager.getInstance().requestDmList(this.cid, 1, this.danmakuPn).then((source) => {
+      if (this.mDestroyed) {
+        return;
+      }
       if (isInit) {
         this.initDanmaku(source);
       } else {
@@ -367,6 +417,9 @@ export struct PlayerView {
 
   private getPlayUrl(bvid: string, cid: number) {
     ApiManager.getInstance().requestPlayUrl(bvid, cid).then((resp: PlayUrlResponse) => {
+      if (this.mDestroyed) {
+        return;
+      }
       this.mPlayUrl = resp.data.durl[0].url.replace(/\\u0026/g, '&')
       BLog.i("requestPlayUrl Response Data url=" + this.mPlayUrl);
       this.initPlay(this.mPlayUrl);
@@ -417,6 +470,10 @@ export struct PlayerView {
     });
     this.player.setOnStateChangeCallback({
       OnStateChange(status: IPlayStatus) {
+        if (thisClass.mDestroyed) {
+          // 页面已销毁：迟到的状态回调一律忽略（播放器内部已由 release 兜底）
+          return;
+        }
         thisClass.mState = status;
         if (status == IPlayStatus.INIT) {
           thisClass.mFirst = true;
