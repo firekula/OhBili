@@ -33,6 +33,8 @@ struct VideoPlayer {
   @StorageLink('replyCount') @Watch('onCountUpdated') replyCount: number = 0;
   @State tabTitle: ResourceStr[] = [$r('app.string.video_overview'), $r('app.string.video_reply', 0)];
   @StorageLink('replyItem') @Watch('onReplyUpdated') replyItem: ReplyItem = null;
+  @StorageLink('playerFullScreen') playerFullScreen: boolean = false;
+  @StorageLink('playerLocked') playerLocked: boolean = false;
   @State pageState: string = "";
   @State fansCount: number = 0;
   @State archiveCount: number = 0;
@@ -88,6 +90,15 @@ struct VideoPlayer {
   }
 
   onBackPress() {
+    // 锁定态屏蔽返回键
+    if (this.playerLocked) {
+      return true;
+    }
+    // 全屏态先退全屏（PlayerView 的 Watch 负责旋转与系统栏恢复）
+    if (this.playerFullScreen) {
+      this.playerFullScreen = false;
+      return true;
+    }
     if (this.replyItem != null) {
       this.replyItem = null;
       return true;
@@ -134,7 +145,7 @@ struct VideoPlayer {
   build() {
     Column() {
       PlayerView({ cid: this.vInfo.cid, bvid: this.vInfo.bvid, pageState: $pageState })
-      if (this.isPortrait) {
+      if (this.isPortrait && !this.playerFullScreen) {
         if (this.replyItem != null) {
           Column() {
             ReplyDetailView({ vInfo: this.vInfo })

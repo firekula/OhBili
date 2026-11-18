@@ -13,6 +13,7 @@
 import { IPlayer } from './IPlayer';
 import { IPlayStatus } from './IPlayStatus';
 import media from '@ohos.multimedia.media';
+import { BusinessError } from '@ohos.base';
 import { StringUtil } from '../utils/StringUtil';
 
 let updateProgressTimer;
@@ -52,7 +53,24 @@ export class AvPlayer extends IPlayer {
 
     public setDataSource(url: string, headers?:Map<string,string>) {
         this.isSeek = false;
-        this.avPlayer.url = url;
+        if (headers !== undefined && headers.size > 0) {
+            // 系统播放器默认 HTTP 请求不携带自定义头，B站 CDN 校验 User-Agent/Referer，
+            // 直接赋值 url 会得到 403（content-type: text/html 错误页 → 5400106）。
+            // 须通过 MediaSource 携带自定义请求头（API 12+）。
+            let headerRecord: Record<string, string> = {};
+            headers.forEach((value: string, key: string) => {
+                if (key !== 'Connection') {
+                    headerRecord[key] = value;
+                }
+            });
+            let mediaSource: media.MediaSource = media.createMediaSourceWithUrl(url, headerRecord);
+            this.avPlayer.setMediaSource(mediaSource).catch((error: BusinessError) => {
+                console.error(`setMediaSource failed, code is ${error.code}, message is ${error.message}`);
+                this.avPlayer.url = url;
+            });
+        } else {
+            this.avPlayer.url = url;
+        }
     }
 
     public play() {
@@ -69,6 +87,22 @@ export class AvPlayer extends IPlayer {
 
     public seekTo(value: number) {
         this.avPlayer.seek(value);
+    }
+
+    // 将 XComponent 的 surface 缓冲区调整为视频实际宽高比，避免非 16:9 视频拉伸
+    private updateSurfaceSize(videoWidth: number, videoHeight: number): void {
+        if (videoWidth <= 0 || videoHeight <= 0) {
+            return;
+        }
+        let targetWidth: number = videoWidth;
+        let targetHeight: number = videoHeight;
+        let maxDim: number = Math.max(targetWidth, targetHeight);
+        if (maxDim > 1920) {
+            let scale: number = 1920 / maxDim;
+            targetWidth = Math.round(targetWidth * scale);
+            targetHeight = Math.round(targetHeight * scale);
+        }
+        this.xController.setXComponentSurfaceSize({surfaceWidth: targetWidth, surfaceHeight: targetHeight});
     }
 
     public setScreenOn(on: boolean) {
@@ -121,6 +155,9 @@ export class AvPlayer extends IPlayer {
                     if (this.mOnSizeChangeCallback) {
                         this.mOnSizeChangeCallback.OnSizeChange(this.avPlayer.width, this.avPlayer.height);
                     }
+                    // surface 缓冲区初始为 1920x1080，与视频实际宽高比不一致可能导致拉伸，
+                    // 播放前把缓冲区调整为视频实际宽高比（最大边 1920 封顶）
+                    this.updateSurfaceSize(this.avPlayer.width, this.avPlayer.height);
                     this.avPlayer.play(); // 调用播放接口开始播放
                     break;
                 case 'playing': // play成功调用后触发该状态机上报

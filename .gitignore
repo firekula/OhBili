@@ -9,3 +9,7 @@
 /.clang-format
 /.clang-tidy
 **/BuildProfile.ets
+/.cache
+/.deveco
+/.verify-screenshots
+/.verify_screenshots

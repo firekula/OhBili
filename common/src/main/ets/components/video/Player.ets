@@ -13,6 +13,7 @@
 import prompt from '@ohos.prompt';
 import router from '@ohos.router';
 import window from '@ohos.window';
+import deviceInfo from '@ohos.deviceInfo';
 import { IPlayer } from '../../player/IPlayer';
 import { AvPlayer } from '../../player/AvPlayer';
 import { IjkPlayer } from '../../player/IjkPlayer';
@@ -41,10 +42,15 @@ import { ApiManager } from '../../network/ApiManager';
 import { PlayUrlResponse } from '../../model/response/PlayUrlResponse';
 import { VideoPartsResponse } from '../../model/response/VideoPartsResponse';
 import { ApiConstants } from '../../network/ApiConstants';
+import { StringUtil } from '../../utils/StringUtil';
 
 let PROGRESS_MAX_VALUE: number = 100;
 let DANMAKU_TIME: number = 360000;
-let playerType = "IjkPlayer";
+// ijkplayer 的 HAR 只提供 arm32/arm64 原生库，无 x86_64 版本；
+// x86_64 模拟器上加载 libijkplayer_napi.so 会失败（native 模块为 undefined，
+// 播放时 _getCurrentPosition 抛 TypeError 导致闪退），因此按 ABI 选择播放器：
+// x86_64（模拟器）使用系统 AvPlayer，ARM 真机保持 IjkPlayer。
+let playerType = deviceInfo.abiList.indexOf('x86_64') >= 0 ? "AvPlayer" : "IjkPlayer";
 
 @Component
 export struct PlayerView {
@@ -63,7 +69,12 @@ export struct PlayerView {
   @State mFirst: boolean = true;
   @State mState: IPlayStatus = IPlayStatus.INIT;
   @State mIsShowCtl: boolean = false;
-  private fullScreenRatio: number = 16 / 9;
+  @StorageLink('playerFullScreen') @Watch('onFullScreenUpdated') mIsFullScreen: boolean = false;
+  @StorageLink('playerLocked') mIsLocked: boolean = false;
+  private mDisW: number = 0;
+  private mDisH: number = 0;
+  private mFsPortraitRatio: number = 9 / 16;
+  private mFsLandscapeRatio: number = 16 / 9;
   @State mIsShowDanmaku: boolean = true;
   @State mDanmakuModel: DanmakuView.Model = new DanmakuView.Model();
   private mDanmakuContext: DanmakuContext;
@@ -114,7 +125,10 @@ export struct PlayerView {
             this.player.stop();
           }
         }
-        if (!this.isPortrait) {
+        if (this.mIsFullScreen) {
+          // 退出全屏（含窗口旋转、系统栏恢复、解锁），由 onFullScreenUpdated 统一处理
+          this.mIsFullScreen = false;
+        } else if (!this.isPortrait) {
           WindowManager.changeWindowDirection(window.Orientation.PORTRAIT)
           this.isPortrait = true
           WindowManager.setFullScreen(this.isPortrait);
@@ -132,18 +146,62 @@ export struct PlayerView {
   aboutToAppear() {
     let dis = display.getDefaultDisplaySync();
     if (dis != null) {
-      var height = dis.height;
-      dis.getCutoutInfo().then((info) => {
-        info.boundingRects.forEach(rect => {
-          height -= rect.height;
-        });
-        this.fullScreenRatio = height / dis.width;
-      })
+      this.mDisW = dis.width;
+      this.mDisH = dis.height;
+      // 竖屏全屏（窗口不旋转）与横屏全屏（窗口旋转后）的屏幕宽高比
+      this.mFsPortraitRatio = this.mDisW / this.mDisH;
+      this.mFsLandscapeRatio = this.mDisH / this.mDisW;
     }
     this.player.setPlayId(this.bvid);
     if (this.cid > 0) {
       this.getDanmaku(true);
     }
+  }
+
+  onFullScreenUpdated(propName: string): void {
+    BLog.i('PlayerView onFullScreenUpdated: ' + this.mIsFullScreen
+      + ', aspRatio: ' + this.aspRatio + ', isPortrait: ' + this.isPortrait);
+    if (this.mIsFullScreen) {
+      // 进入全屏：横屏视频旋转窗口铺满；竖屏视频保持竖屏铺满（B站样式）
+      if (this.aspRatio >= 1) {
+        if (this.isPortrait) {
+          WindowManager.changeWindowDirection(window.Orientation.LANDSCAPE);
+          this.isPortrait = false;
+        }
+      } else {
+        if (!this.isPortrait) {
+          WindowManager.changeWindowDirection(window.Orientation.PORTRAIT);
+          this.isPortrait = true;
+        }
+        WindowManager.setFullScreen(false);
+      }
+    } else {
+      // 退出全屏：恢复竖屏窗口与系统栏，并解除锁定
+      this.mIsLocked = false;
+      if (!this.isPortrait) {
+        WindowManager.changeWindowDirection(window.Orientation.PORTRAIT);
+        this.isPortrait = true;
+      } else {
+        WindowManager.setFullScreen(true);
+      }
+    }
+  }
+
+  // 全屏模式下视频宽度：视频宽高比窄于容器时按容器高度做信箱式留黑（不裁剪、不拉伸）
+  private fsXcWidth(): Length {
+    if (!this.mIsFullScreen) {
+      return '100%';
+    }
+    let containerW: number = this.isPortrait ? this.mDisW : this.mDisH;
+    let containerH: number = this.isPortrait ? this.mDisH : this.mDisW;
+    if (containerW <= 0 || containerH <= 0) {
+      return '100%';
+    }
+    let containerRatio: number = containerW / containerH;
+    if (this.aspRatio >= containerRatio) {
+      return '100%';
+    }
+    return (this.aspRatio / containerRatio) * 100 + '%';
   }
 
   build() {
@@ -164,7 +222,7 @@ export struct PlayerView {
             }
           });
         })
-        .width('100%')
+        .width(this.mIsFullScreen ? this.fsXcWidth() : '100%')
         .aspectRatio(this.aspRatio)
 
       if (!this.mIsShowCtl) {
@@ -230,8 +288,53 @@ export struct PlayerView {
         .justifyContent(FlexAlign.Center)
       }
 
+      if (this.mIsFullScreen && !this.mIsLocked) {
+        Row() {
+          Image($r('app.media.ic_player_lock'))
+            .width(24)
+            .height(24)
+        }
+        .width(44)
+        .height(44)
+        .borderRadius(22)
+        .backgroundColor('#66000000')
+        .justifyContent(FlexAlign.Center)
+        .position({ x: 12, y: '50%' })
+        .translate({ y: '-50%' })
+        .onClick(() => {
+          this.mIsLocked = true;
+          this.mIsShowCtl = false;
+        })
+      }
+
+      if (this.mIsFullScreen && this.mIsLocked) {
+        // 锁定态：透明拦截层吞掉所有触摸，仅保留左侧解锁按钮
+        Column() {
+          Row() {
+            Image($r('app.media.ic_player_unlock'))
+              .width(24)
+              .height(24)
+          }
+          .width(44)
+          .height(44)
+          .borderRadius(22)
+          .backgroundColor('#66000000')
+          .justifyContent(FlexAlign.Center)
+          .position({ x: 12, y: '50%' })
+          .translate({ y: '-50%' })
+          .onClick(() => {
+            this.mIsLocked = false;
+            this.mIsShowCtl = true;
+          })
+        }
+        .width('100%')
+        .height('100%')
+        .onClick(() => {
+        })
+      }
+
     }.width('100%')
-    .aspectRatio(this.isPortrait ? 16 / 9 : this.fullScreenRatio)
+    .aspectRatio(this.mIsFullScreen ? (this.isPortrait ? this.mFsPortraitRatio : this.mFsLandscapeRatio) : this.aspRatio)
     .backgroundColor(Color.Black)
   }
 
@@ -417,6 +520,7 @@ struct PlayerControlView {
   private player: IPlayer;
   private mDanmakuModel: DanmakuView.Model;
   @StorageLink('isPortrait') isPortrait: boolean = true;
+  @StorageLink('playerFullScreen') mIsFullScreen: boolean = false;
   @Link loadingVisible: boolean;
   @Link replayVisible: boolean;
   @Link progressValue: number;
@@ -427,6 +531,10 @@ struct PlayerControlView {
   @Link mIsShowCtl: boolean;
   @Link danmakuPn: number;
   @Link mIsShowDanmaku: boolean;
+  @State mShowSeekPreview: boolean = false;
+  @State mSeekPreviewText: string = "";
+  private mPanStartPos: number = 0;
+  private mPanTargetPos: number = 0;
 
   build() {
     Column() {
@@ -436,7 +544,9 @@ struct PlayerControlView {
             .width(24)
             .height(24)
             .onClick(_ => {
-              if (this.isPortrait) {
+              if (this.mIsFullScreen) {
+                this.mIsFullScreen = false;
+              } else if (this.isPortrait) {
                 router.back();
               } else {
                 WindowManager.changeWindowDirection(window.Orientation.PORTRAIT)
@@ -514,19 +624,20 @@ struct PlayerControlView {
             this.mDanmakuModel.setVisibility(this.mIsShowDanmaku);
           });
 
-          if (this.isPortrait) {
+          if (!this.mIsFullScreen) {
             Image($r('app.media.ic_player_toggle_zoom'))
               .width(24)
               .height(24)
               .onClick(() => {
-                WindowManager.changeWindowDirection(window.Orientation.LANDSCAPE)
-                this.isPortrait = false
+                this.mIsFullScreen = true;
               })
           } else {
-            Text('360P')
-              .fontSize(14)
-              .margin({ left: 16, right: 16 })
-              .fontColor(Color.White)
+            Image($r('app.media.ic_player_fullscreen_switch_halfscreen'))
+              .width(24)
+              .height(24)
+              .onClick(() => {
+                this.mIsFullScreen = false;
+              })
           }
         }.padding({ left: 8, right: 8, top: 4, bottom: 4 })
         .width('100%')
@@ -534,11 +645,95 @@ struct PlayerControlView {
           colors: [["#00000000", 0.0], ["#aa000000", 1.0]]
         })
       }
+      if (this.mShowSeekPreview) {
+        Text(this.mSeekPreviewText)
+          .fontSize(16)
+          .fontColor(Color.White)
+          .padding({ left: 16, right: 16, top: 8, bottom: 8 })
+          .backgroundColor('#99000000')
+          .borderRadius(8)
+          .position({ x: '50%', y: '50%' })
+          .translate({ x: '-50%', y: '-50%' })
+      }
     }.width('100%')
     .height('100%')
     .onClick(() => {
       this.mIsShowCtl = !this.mIsShowCtl
     })
+    .gesture(GestureGroup(GestureMode.Exclusive,
+      TapGesture({ count: 2 })
+        .onAction(() => {
+          this.togglePlayByTap();
+        }),
+      PanGesture({ fingers: 1, direction: PanDirection.Horizontal, distance: 8 })
+        .onActionStart((event: GestureEvent) => {
+          this.onPanStart(event);
+        })
+        .onActionUpdate((event: GestureEvent) => {
+          this.onPanUpdate(event);
+        })
+        .onActionEnd((event: GestureEvent) => {
+          this.onPanEnd(event);
+        })
+    ))
+  }
+
+  // 双击切换播放/暂停
+  private togglePlayByTap(): void {
+    if (this.mState == IPlayStatus.PLAY) {
+      this.player.pause();
+    } else if (this.mState == IPlayStatus.PAUSE) {
+      this.player.play();
+    }
+  }
+
+  // 水平拖动慢速快进/快退（0.5 倍速），松手后执行 seek
+  private onPanStart(event: GestureEvent): void {
+    let duration: number = this.player.getDuration();
+    if (duration <= 0) {
+      return;
+    }
+    this.mPanStartPos = this.progressValue / 100 * duration;
+    this.mPanTargetPos = this.mPanStartPos;
+  }
+
+  private onPanUpdate(event: GestureEvent): void {
+    let duration: number = this.player.getDuration();
+    if (duration <= 0) {
+      return;
+    }
+    let dis = display.getDefaultDisplaySync();
+    let ctlW: number = this.isPortrait ? dis.width : dis.height;
+    if (ctlW <= 0) {
+      return;
+    }
+    let deltaMs: number = event.offsetX / ctlW * duration * 0.5;
+    let target: number = this.mPanStartPos + deltaMs;
+    if (target < 0) {
+      target = 0;
+    }
+    if (target > duration) {
+      target = duration;
+    }
+    this.mPanTargetPos = target;
+    this.mSeekPreviewText = StringUtil.stringForTime(target) + " / " + StringUtil.stringForTime(duration);
+    this.mShowSeekPreview = true;
+  }
+
+  private onPanEnd(event: GestureEvent): void {
+    this.mShowSeekPreview = false;
+    if (this.player.getDuration() <= 0) {
+      return;
+    }
+    let seekValue: number = this.mPanTargetPos;
+    this.player.pause();
+    this.showLoadIng();
+    this.player.seekTo(seekValue);
+    if ((this.danmakuPn-1) * DANMAKU_TIME <= seekValue && this.danmakuPn * DANMAKU_TIME > seekValue ) {
+      this.mDanmakuModel.seekTo(seekValue - (this.danmakuPn-1) * DANMAKU_TIME);
+    } else {
+      this.danmakuPn = Math.floor(seekValue / DANMAKU_TIME) + 1;
+    }
   }
 
   private showLoadIng() {
