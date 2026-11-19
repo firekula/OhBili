@@ -10,29 +10,37 @@
  * See the Mulan PSL v2 for more details.
  */
 
-import { ApiManager, DataSourceManager, DynamicFeedResult, DynamicItem,
-  DynamicItemView, HomePullToRefresh, OhNavBar } from '@ohos/common'
+import { ApiManager, DataSourceManager, DynamicDataSource, DynamicFeedResult,
+  DynamicItem, DynamicItemView, HomePullToRefresh, OhNavBar } from '@ohos/common'
 import router from '@ohos.router';
+
+/** 视频标签单次加载的翻页兜底上限：一页可能被过滤到 0 条，循环拉取直到有新增或翻尽 */
+let FEED_MAX_ROUNDS: number = 5;
 
 @Component
 export struct MomentsView {
   @StorageLink('isOhBiliLoggedIn') @Watch('onLoginStateChanged') loginState: boolean = false;
   @StorageLink('ohBiliUname') uname: string = '';
   @StorageLink('ohBiliFace') face: string = '';
+  /** 仅为构建器内 this.scroller 的编译期类型检查保留；运行时实际取子组件同名属性 */
   private scroller: Scroller = new Scroller();
+  /** 各标签独立滚动器（切回标签保留各自滚动位置） */
+  private scrollers: Scroller[] = [new Scroller(), new Scroller()];
   @State data: any[] = [];
-  /** 动态流分页游标（首页空串） */
-  @State feedOffset: string = '';
-  /** 是否还有更多动态 */
-  @State hasMore: boolean = true;
+  /** 当前标签：0=全部 1=视频 */
+  @State currentTab: number = 0;
+  /** 各标签独立分页游标（首页空串） */
+  private feedOffsets: string[] = ['', ''];
+  /** 各标签是否还有更多动态 */
+  private hasMores: boolean[] = [true, true];
+  /** 各标签是否已成功发起过加载（防重复触发；切回已加载标签不重拉首屏） */
+  private loadedOnces: boolean[] = [false, false];
   /** 首屏加载中 */
   @State isLoading: boolean = false;
   /** 首屏请求失败（网络异常等） */
   @State loadFailed: boolean = false;
   /** 登录失效（业务码 -101） */
   @State loginExpired: boolean = false;
-  /** 是否已成功发起过加载（防重复触发） */
-  private loadedOnce: boolean = false;
 
   aboutToAppear() {
     if (this.loginState) {
@@ -46,10 +54,10 @@ export struct MomentsView {
    */
   onLoginStateChanged() {
     if (!this.loginState) {
-      this.loadedOnce = false;
+      this.loadedOnces = [false, false];
       return;
     }
-    if (!this.loadedOnce) {
+    if (!this.loadedOnces[this.currentTab]) {
       this.loadFirst();
     }
   }
@@ -58,6 +66,10 @@ export struct MomentsView {
     Column() {
       OhNavBar({ title: "动态", isBack: false, isTitleCenter: true })
 
+      if (this.loginState) {
+        this.TabBar()
+      }
+
       if (!this.loginState) {
         Text("你还未登录").fontSize(16).fontColor(Color.Black).fontWeight(FontWeight.Medium).margin({ top: 48 })
         Text("登录账号，查看你关注的UP主内容").fontSize(15).fontColor('#888888').margin({ top: 16 })
@@ -65,13 +77,13 @@ export struct MomentsView {
           router.pushUrl({ url: "pages/Login" })
         })
       } else {
-        if (this.isLoading && DataSourceManager.getDynamicSource().totalCount() == 0) {
+        if (this.isLoading && this.currentSource().totalCount() == 0) {
           // 首屏加载态
           Column() {
             LoadingProgress()
               .width(36)
               .height(36)
-            Text("动态加载中...")
+            Text(this.currentTab == 1 ? "视频动态加载中..." : "动态加载中...")
               .fontSize(14)
               .fontColor('#888888')
               .margin({ top: 12 })
@@ -79,7 +91,7 @@ export struct MomentsView {
           .width('100%')
           .layoutWeight(1)
           .justifyContent(FlexAlign.Center)
-        } else if (this.loginExpired && DataSourceManager.getDynamicSource().totalCount() == 0) {
+        } else if (this.loginExpired && this.currentSource().totalCount() == 0) {
           // 登录失效：引导重新登录，非死循环加载
           Column() {
             Text("登录已失效").fontSize(16).fontColor(Color.Black).fontWeight(FontWeight.Medium).margin({ top: 48 })
@@ -91,7 +103,7 @@ export struct MomentsView {
           .width('100%')
           .layoutWeight(1)
           .justifyContent(FlexAlign.Center)
-        } else if (this.loadFailed && DataSourceManager.getDynamicSource().totalCount() == 0) {
+        } else if (this.loadFailed && this.currentSource().totalCount() == 0) {
           // 请求失败错误态，可重试
           Column() {
             Text("动态加载失败").fontSize(16).fontColor(Color.Black).fontWeight(FontWeight.Medium).margin({ top: 48 })
@@ -103,23 +115,43 @@ export struct MomentsView {
           .width('100%')
           .layoutWeight(1)
           .justifyContent(FlexAlign.Center)
-        } else if (DataSourceManager.getDynamicSource().totalCount() == 0) {
+        } else if (this.currentSource().totalCount() == 0) {
           // 空态（如新账号无关注）
           Column() {
-            Text("暂无动态").fontSize(16).fontColor(Color.Black).fontWeight(FontWeight.Medium).margin({ top: 48 })
+            Text(this.currentTab == 1 ? "暂无视频动态" : "暂无动态")
+              .fontSize(16).fontColor(Color.Black).fontWeight(FontWeight.Medium).margin({ top: 48 })
             Text("去关注喜欢的UP主吧").fontSize(14).fontColor('#888888').margin({ top: 12 })
           }
           .width('100%')
           .layoutWeight(1)
           .justifyContent(FlexAlign.Center)
+        } else if (this.currentTab == 0) {
+          HomePullToRefresh({
+            // 必传项，列表组件所绑定的数据
+            data: $data,
+            // 必传项，需绑定传入主体布局内的列表或宫格组件
+            scroller: this.scrollers[0],
+            // 必传项，自定义主体布局，内部有列表或宫格组件
+            customList: this.getAllListView,
+            // 下拉刷新回调
+            onRefresh: () => {
+              return this.refresh();
+            },
+            // 上拉加载更多回调
+            onLoadMore: () => {
+              return this.loadMore();
+            },
+            customLoad: null,
+            customRefresh: null,
+          })
         } else {
           HomePullToRefresh({
             // 必传项，列表组件所绑定的数据
             data: $data,
             // 必传项，需绑定传入主体布局内的列表或宫格组件
-            scroller: this.scroller,
+            scroller: this.scrollers[1],
             // 必传项，自定义主体布局，内部有列表或宫格组件
-            customList: this.getListView,
+            customList: this.getVideoListView,
             // 下拉刷新回调
             onRefresh: () => {
               return this.refresh();
@@ -137,37 +169,120 @@ export struct MomentsView {
   }
 
   /**
-   * 首屏加载（刷新第一页）
+   * 全部/视频标签栏
    */
-  private loadFirst(): void {
-    this.loadedOnce = true;
-    this.isLoading = true;
-    this.loadFailed = false;
-    this.loginExpired = false;
-    ApiManager.getInstance().requestDynamicFeed('', true).then((result: DynamicFeedResult) => {
-      this.isLoading = false;
-      if (result.success) {
-        this.feedOffset = result.nextOffset;
-        this.hasMore = result.hasMore;
-      } else if (result.loginExpired) {
-        this.loginExpired = true;
-      } else {
-        this.loadFailed = true;
-      }
-    }).catch(() => {
-      this.isLoading = false;
-      this.loadFailed = true;
-    });
+  @Builder
+  TabBar() {
+    Row({ space: 10 }) {
+      Text("全部")
+        .fontSize(14)
+        .fontColor(this.currentTab == 0 ? Color.White : '#333333')
+        .fontWeight(this.currentTab == 0 ? FontWeight.Medium : FontWeight.Normal)
+        .backgroundColor(this.currentTab == 0 ? '#1698CE' : '#ffffff')
+        .borderRadius(14)
+        .padding({ left: 16, right: 16, top: 5, bottom: 5 })
+        .onClick(() => {
+          this.switchTab(0);
+        })
+      Text("视频")
+        .fontSize(14)
+        .fontColor(this.currentTab == 1 ? Color.White : '#333333')
+        .fontWeight(this.currentTab == 1 ? FontWeight.Medium : FontWeight.Normal)
+        .backgroundColor(this.currentTab == 1 ? '#1698CE' : '#ffffff')
+        .borderRadius(14)
+        .padding({ left: 16, right: 16, top: 5, bottom: 5 })
+        .onClick(() => {
+          this.switchTab(1);
+        })
+    }
+    .width('100%')
+    .padding({ left: 12, top: 8, bottom: 8 })
   }
 
   /**
-   * 下拉刷新：回到最新（重新加载第一页）
+   * 切换标签：未加载过的标签拉首屏；已加载的保留列表（可下拉刷新）
+   */
+  private switchTab(tab: number): void {
+    if (tab == this.currentTab) {
+      return;
+    }
+    this.currentTab = tab;
+    if (!this.loadedOnces[tab]) {
+      this.loadFirst();
+    }
+  }
+
+  /**
+   * 当前标签的数据源
+   */
+  private currentSource(): DynamicDataSource {
+    return this.sourceOf(this.currentTab);
+  }
+
+  private sourceOf(tab: number): DynamicDataSource {
+    return tab == 1 ? DataSourceManager.getDynamicVideoSource()
+      : DataSourceManager.getDynamicSource();
+  }
+
+  /**
+   * 首屏加载（刷新当前标签第一页）
+   */
+  private loadFirst(): void {
+    let tab: number = this.currentTab;
+    this.loadedOnces[tab] = true;
+    this.isLoading = true;
+    this.loadFailed = false;
+    this.loginExpired = false;
+    this.fetchFirstPage(tab);
+  }
+
+  /**
+   * 首屏拉取：视频标签一页可能被过滤到 0 条，
+   * 循环按游标翻页直到有内容或翻尽（FEED_MAX_ROUNDS 兜底）
+   */
+  private async fetchFirstPage(tab: number): Promise<void> {
+    let videoOnly: boolean = tab == 1;
+    let offset: string = '';
+    let hasMore: boolean = true;
+    let success: boolean = false;
+    let expired: boolean = false;
+    let rounds: number = 0;
+    while (rounds < FEED_MAX_ROUNDS) {
+      let result: DynamicFeedResult =
+        await ApiManager.getInstance().requestDynamicFeed(offset, rounds == 0, videoOnly);
+      if (!result.success) {
+        expired = result.loginExpired;
+        break;
+      }
+      success = true;
+      offset = result.nextOffset;
+      hasMore = result.hasMore;
+      rounds++;
+      if (!videoOnly || this.sourceOf(tab).totalCount() > 0 || !hasMore) {
+        break;
+      }
+    }
+    this.isLoading = false;
+    if (success) {
+      this.feedOffsets[tab] = offset;
+      this.hasMores[tab] = hasMore;
+    } else if (expired) {
+      this.loginExpired = true;
+    } else {
+      this.loadFailed = true;
+    }
+  }
+
+  /**
+   * 下拉刷新：回到最新（重新加载当前标签第一页）
    */
   private async refresh(): Promise<string> {
-    let result: DynamicFeedResult = await ApiManager.getInstance().requestDynamicFeed('', true);
+    let tab: number = this.currentTab;
+    let result: DynamicFeedResult =
+      await ApiManager.getInstance().requestDynamicFeed('', true, tab == 1);
     if (result.success) {
-      this.feedOffset = result.nextOffset;
-      this.hasMore = result.hasMore;
+      this.feedOffsets[tab] = result.nextOffset;
+      this.hasMores[tab] = result.hasMore;
       this.loginExpired = false;
       return '';
     }
@@ -178,28 +293,49 @@ export struct MomentsView {
   }
 
   /**
-   * 上拉加载更多：按游标分页追加；翻尽后提示"没有更多了"且不再请求
+   * 上拉加载更多：按游标分页追加；翻尽后提示"没有更多了"且不再请求。
+   * 视频标签一页可能被过滤到 0 条新增，循环翻页直到有新增或翻尽（有兜底上限）
    */
   private async loadMore(): Promise<string> {
-    if (!this.hasMore) {
+    let tab: number = this.currentTab;
+    if (!this.hasMores[tab]) {
       return '没有更多了';
     }
-    let result: DynamicFeedResult =
-      await ApiManager.getInstance().requestDynamicFeed(this.feedOffset, false);
-    if (result.success) {
-      this.feedOffset = result.nextOffset;
-      this.hasMore = result.hasMore;
-      return '';
+    let videoOnly: boolean = tab == 1;
+    let offset: string = this.feedOffsets[tab];
+    let hasMore: boolean = true;
+    let rounds: number = 0;
+    while (rounds < FEED_MAX_ROUNDS) {
+      let before: number = this.sourceOf(tab).totalCount();
+      let result: DynamicFeedResult =
+        await ApiManager.getInstance().requestDynamicFeed(offset, false, videoOnly);
+      if (!result.success) {
+        if (result.loginExpired) {
+          this.loginExpired = true;
+          return '登录已失效';
+        }
+        return '加载失败';
+      }
+      offset = result.nextOffset;
+      hasMore = result.hasMore;
+      rounds++;
+      let added: number = this.sourceOf(tab).totalCount() - before;
+      if (!videoOnly || added > 0 || !hasMore) {
+        break;
+      }
     }
-    if (result.loginExpired) {
-      this.loginExpired = true;
-      return '登录已失效';
-    }
-    return '加载失败';
+    this.feedOffsets[tab] = offset;
+    this.hasMores[tab] = hasMore;
+    return '';
   }
 
+  /**
+   * 全部标签列表。注意：customList 以引用方式传入 HomePullToRefresh，
+   * 构建器内 this 不是本组件，只能使用子组件同名属性（this.scroller）与
+   * 静态单例（DataSourceManager），不可调用本组件方法。
+   */
   @Builder
-  private getListView(_, onListStatus: (isListStart: boolean, isListEnd: boolean) => void) {
+  private getAllListView(_, onListStatus: (isListStart: boolean, isListEnd: boolean) => void) {
     List({ scroller: this.scroller }) {
       LazyForEach(DataSourceManager.getDynamicSource(), (item: DynamicItem, index: number) => {
         ListItem() {
@@ -213,6 +349,27 @@ export struct MomentsView {
     .onScrollIndex((start, end) => {
       onListStatus(start == 0,
         end == DataSourceManager.getDynamicSource().totalCount() - 1)
+    })
+  }
+
+  /**
+   * 视频标签列表（仅视频投稿动态）
+   */
+  @Builder
+  private getVideoListView(_, onListStatus: (isListStart: boolean, isListEnd: boolean) => void) {
+    List({ scroller: this.scroller }) {
+      LazyForEach(DataSourceManager.getDynamicVideoSource(), (item: DynamicItem, index: number) => {
+        ListItem() {
+          DynamicItemView({ item: item })
+        }
+      }, item => item.id_str)
+    }
+    .width('100%')
+    .padding({ top: 8, bottom: 8, left: 12, right: 12 })
+    .edgeEffect(EdgeEffect.None)
+    .onScrollIndex((start, end) => {
+      onListStatus(start == 0,
+        end == DataSourceManager.getDynamicVideoSource().totalCount() - 1)
     })
   }
 }

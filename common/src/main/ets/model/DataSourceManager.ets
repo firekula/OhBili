@@ -230,6 +230,7 @@ export class DataSourceManager {
     globalThis.replyDetailSource = new ReplyDataSource();
     globalThis.searchSource = new SearchDataSource();
     globalThis.dynamicSource = new DynamicDataSource();
+    globalThis.dynamicVideoSource = new DynamicDataSource();
     globalThis.spaceArcMapSource = new Map<string, SpaceArcDataSource>();
     globalThis.historySource = new HistoryDataSource();
     globalThis.favMediaMapSource = new Map<string, FavMediaDataSource>();
@@ -307,6 +308,16 @@ export class DataSourceManager {
   public static getDynamicSource(): DynamicDataSource {
     if (globalThis.dynamicSource != undefined) {
       return globalThis.dynamicSource;
+    }
+    return new DynamicDataSource();
+  }
+
+  /**
+   * 动态流"视频"标签数据源（仅视频投稿动态，LazyForEach 消费）
+   */
+  public static getDynamicVideoSource(): DynamicDataSource {
+    if (globalThis.dynamicVideoSource != undefined) {
+      return globalThis.dynamicVideoSource;
     }
     return new DynamicDataSource();
   }

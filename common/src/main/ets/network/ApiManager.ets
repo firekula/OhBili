@@ -481,10 +481,11 @@ export class ApiManager {
   /**
    * 拉取关注 UP 主动态流（offset 游标分页）：
    * 成功写入 DynamicDataSource（刷新清空重填 / 追加按 id_str 去重）；
+   * videoOnly=true 时仅保留视频投稿动态并写入独立的视频动态数据源；
    * 登录失效（业务码 -101）返回 loginExpired 标志，由页面引导重新登录。
    */
-  async requestDynamicFeed(offset: string, isRefresh: boolean): Promise<DynamicFeedResult> {
-    BLog.d("requestDynamicFeed offset=" + offset + ", isRefresh=" + isRefresh);
+  async requestDynamicFeed(offset: string, isRefresh: boolean, videoOnly: boolean = false): Promise<DynamicFeedResult> {
+    BLog.d("requestDynamicFeed offset=" + offset + ", isRefresh=" + isRefresh + ", videoOnly=" + videoOnly);
     let cookie: string = LoginHelper.buildCookieHeader();
     let response = await TaskManager.getInstance().requestDynamicFeed(cookie, offset);
     if (response.code == -1) {
@@ -505,6 +506,17 @@ export class ApiManager {
     }
     let data = response.result.data;
     let items: DynamicItem[] = data.items ?? [];
+    if (videoOnly) {
+      // "视频"标签：仅保留视频投稿动态（优先 type 字段，缺失时按 major.archive 内容判定）
+      let videos: DynamicItem[] = [];
+      items.forEach((item: DynamicItem) => {
+        if (this.isVideoDynamic(item)) {
+          videos.push(item);
+        }
+      });
+      BLog.d("requestDynamicFeed videoOnly filter: " + items.length + " -> " + videos.length);
+      items = videos;
+    }
     // 调试：统计本页转发类动态数量（orig 非空）
     let origCount: number = 0;
     items.forEach((item: DynamicItem) => {
@@ -514,7 +526,9 @@ export class ApiManager {
       }
     });
     BLog.d("requestDynamicFeed page items=" + items.length + ", origCount=" + origCount);
-    let source = DataSourceManager.getDynamicSource();
+    let source = videoOnly
+      ? DataSourceManager.getDynamicVideoSource()
+      : DataSourceManager.getDynamicSource();
     if (isRefresh) {
       source.setData(items);
     } else {
@@ -532,6 +546,20 @@ export class ApiManager {
       source.addAllData(newItems);
     }
     return new DynamicFeedResult(true, false, data.has_more ?? false, data.offset ?? '');
+  }
+
+  /**
+   * 是否为视频投稿动态：type 为 DYNAMIC_TYPE_AV，或（type 缺失时）
+   * 主体带 major.archive（转发/图文/直播/专栏等均不含顶层 archive，天然被排除）
+   */
+  private isVideoDynamic(item: DynamicItem): boolean {
+    if (item.type != null) {
+      return item.type == 'DYNAMIC_TYPE_AV';
+    }
+    return item.modules != null
+      && item.modules.module_dynamic != null
+      && item.modules.module_dynamic.major != null
+      && item.modules.module_dynamic.major.archive != null;
   }
 
   /**

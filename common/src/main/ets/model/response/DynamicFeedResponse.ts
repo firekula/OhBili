@@ -26,6 +26,9 @@ export interface DynamicFeedData {
 
 export interface DynamicItem {
   id_str: string;
+  /** 动态类型（DYNAMIC_TYPE_AV=视频投稿 / DYNAMIC_TYPE_FORWARD=转发 / DRAW=图文 等），
+   * "视频"标签过滤时优先使用；接口缺失时回退按 major.archive 内容判定 */
+  type?: string;
   modules?: DynamicModules;
 }
 
