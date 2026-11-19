@@ -13,7 +13,6 @@
 import prompt from '@ohos.prompt';
 import router from '@ohos.router';
 import window from '@ohos.window';
-import deviceInfo from '@ohos.deviceInfo';
 import { IPlayer } from '../../player/IPlayer';
 import { AvPlayer } from '../../player/AvPlayer';
 import { IjkPlayer } from '../../player/IjkPlayer';
@@ -46,11 +45,14 @@ import { StringUtil } from '../../utils/StringUtil';
 
 let PROGRESS_MAX_VALUE: number = 100;
 let DANMAKU_TIME: number = 360000;
-// ijkplayer 的 HAR 只提供 arm32/arm64 原生库，无 x86_64 版本；
-// x86_64 模拟器上加载 libijkplayer_napi.so 会失败（native 模块为 undefined，
-// 播放时 _getCurrentPosition 抛 TypeError 导致闪退），因此按 ABI 选择播放器：
-// x86_64（模拟器）使用系统 AvPlayer，ARM 真机保持 IjkPlayer。
-let playerType = deviceInfo.abiList.indexOf('x86_64') >= 0 ? "AvPlayer" : "IjkPlayer";
+// 统一使用系统 AvPlayer：
+// 1. ijkplayer 的 HAR 只提供 arm32/arm64 原生库，无 x86_64 版本（模拟器本就不可用）；
+// 2. 其 2022 年构建的原生渲染层（libijksdl）在 HarmonyOS 7.0 新 GPU 驱动上
+//    创建 EGL 窗口表面失败（hilog: EGL_BAD_MATCH → egl.eglCreateWindowSurface error），
+//    真机表现为有声音无画面（全部视频黑屏），HAR 无源码不可修补；
+// 3. API 12+ 的 AvPlayer 已支持 MediaSource 携带自定义请求头（B站 CDN 需 UA/Referer），
+//    不再需要 ijkplayer 的自带头能力。
+let playerType = "AvPlayer";
 
 @Component
 export struct PlayerView {
@@ -73,12 +75,18 @@ export struct PlayerView {
   @State mFirst: boolean = true;
   @State mState: IPlayStatus = IPlayStatus.INIT;
   @State mIsShowCtl: boolean = false;
-  @StorageLink('playerFullScreen') @Watch('onFullScreenUpdated') mIsFullScreen: boolean = false;
+  @StorageLink('playerFullScreen') mIsFullScreen: boolean = false;
   @StorageLink('playerLocked') mIsLocked: boolean = false;
-  private mDisW: number = 0;
-  private mDisH: number = 0;
-  private mFsPortraitRatio: number = 9 / 16;
-  private mFsLandscapeRatio: number = 16 / 9;
+  /** 窗口尺寸（vp）：窗口旋转后由 windowSizeChange 更新，全屏布局跟随窗口实际尺寸 */
+  @State mWinW: number = 0;
+  @State mWinH: number = 0;
+  private mWindow: window.Window | null = null;
+  /** 待进入全屏意图：旋转窗口前置位，由 windowSizeChange 消费，
+   * 用于区分"旋转到竖屏是进入竖屏视频全屏"还是"退出横屏全屏"（平板横屏等场景） */
+  private mPendingFsEnter: boolean = false;
+  private mSizeCb: (size: window.Size) => void = (size: window.Size) => {
+    this.onWindowSizeChange(size.width, size.height);
+  };
   @State mIsShowDanmaku: boolean = true;
   @State mDanmakuModel: DanmakuView.Model = new DanmakuView.Model();
   private mDanmakuContext: DanmakuContext;
@@ -171,15 +179,15 @@ export struct PlayerView {
     this.mDestroyed = true;
     this.mActive = false;
     BLog.i('BiliPlayer releasePlayer bvid:' + this.bvid);
+    if (this.mWindow != null) {
+      this.mWindow.off('windowSizeChange', this.mSizeCb);
+      this.mWindow = null;
+    }
     this.player.setAutoPlay(false);
     this.player.release();
     if (this.mIsFullScreen) {
-      // 退出全屏（含窗口旋转、系统栏恢复、解锁），由 onFullScreenUpdated 统一处理
+      // 状态清理（页面销毁兜底），窗口/系统栏恢复由页面侧处理
       this.mIsFullScreen = false;
-    } else if (!this.isPortrait) {
-      WindowManager.changeWindowDirection(window.Orientation.PORTRAIT)
-      this.isPortrait = true
-      WindowManager.setFullScreen(this.isPortrait);
     }
   }
 
@@ -188,13 +196,28 @@ export struct PlayerView {
   }
 
   aboutToAppear() {
-    let dis = display.getDefaultDisplaySync();
-    if (dis != null) {
-      this.mDisW = dis.width;
-      this.mDisH = dis.height;
-      // 竖屏全屏（窗口不旋转）与横屏全屏（窗口旋转后）的屏幕宽高比
-      this.mFsPortraitRatio = this.mDisW / this.mDisH;
-      this.mFsLandscapeRatio = this.mDisH / this.mDisW;
+    // 初始化窗口尺寸并监听变化：窗口旋转（横竖屏切换）后布局在 windowSizeChange 中跟随，
+    // 布局永远不先于窗口旋转（官方最佳实践"方式一"）
+    this.mWindow = WindowManager.getMainWindow();
+    if (this.mWindow != null) {
+      try {
+        let rect = this.mWindow.getWindowProperties().windowRect;
+        if (rect.width > 0 && rect.height > 0) {
+          this.mWinW = px2vp(rect.width);
+          this.mWinH = px2vp(rect.height);
+        }
+      } catch (err) {
+        BLog.e('BiliPlayer getWindowProperties failed: ' + JSON.stringify(err));
+      }
+      this.mWindow.on('windowSizeChange', this.mSizeCb);
+    }
+    if (this.mWinW <= 0 || this.mWinH <= 0) {
+      // 兜底：主窗口不可用时取屏幕物理尺寸
+      let dis = display.getDefaultDisplaySync();
+      if (dis != null) {
+        this.mWinW = px2vp(dis.width);
+        this.mWinH = px2vp(dis.height);
+      }
     }
     this.player.setPlayId(this.bvid);
     if (this.cid > 0) {
@@ -202,47 +225,104 @@ export struct PlayerView {
     }
   }
 
-  onFullScreenUpdated(propName: string): void {
-    BLog.i('PlayerView onFullScreenUpdated: ' + this.mIsFullScreen
-      + ', aspRatio: ' + this.aspRatio + ', isPortrait: ' + this.isPortrait);
-    if (this.mIsFullScreen) {
-      // 进入全屏：横屏视频旋转窗口铺满；竖屏视频保持竖屏铺满（B站样式）
-      if (this.aspRatio >= 1) {
-        if (this.isPortrait) {
-          WindowManager.changeWindowDirection(window.Orientation.LANDSCAPE);
-          this.isPortrait = false;
-        }
-      } else {
-        if (!this.isPortrait) {
-          WindowManager.changeWindowDirection(window.Orientation.PORTRAIT);
-          this.isPortrait = true;
-        }
-        WindowManager.setFullScreen(false);
-      }
+  /**
+   * 窗口尺寸变化（旋转/分屏等）：全屏布局的唯一驱动源。
+   * 横屏（w>h）→ 全屏布局生效；竖屏 → 若处于全屏则退出并恢复系统栏
+   */
+  private onWindowSizeChange(wPx: number, hPx: number): void {
+    this.mWinW = px2vp(wPx);
+    this.mWinH = px2vp(hPx);
+    BLog.i('BiliPlayer onWindowSizeChange: ' + wPx + 'x' + hPx
+      + ', fullScreen: ' + this.mIsFullScreen + ', pendingFsEnter: ' + this.mPendingFsEnter);
+    if (wPx > hPx) {
+      // 窗口已旋转为横屏：全屏布局跟随生效（不预先改布局，避免割裂）
+      this.isPortrait = false;
+      this.mPendingFsEnter = false;
+      this.mIsFullScreen = true;
     } else {
-      // 退出全屏：恢复竖屏窗口与系统栏，并解除锁定
-      this.mIsLocked = false;
-      if (!this.isPortrait) {
-        WindowManager.changeWindowDirection(window.Orientation.PORTRAIT);
-        this.isPortrait = true;
-      } else {
+      this.isPortrait = true;
+      if (this.mPendingFsEnter) {
+        // 竖屏视频全屏的进入旋转（横窗→竖窗，平板横屏场景）：旋转完成即进入全屏
+        this.mPendingFsEnter = false;
+        this.mIsFullScreen = true;
+      } else if (this.mIsFullScreen) {
+        // 横屏全屏退出：恢复布局与系统栏
+        this.mIsLocked = false;
+        this.mIsFullScreen = false;
         WindowManager.setFullScreen(true);
       }
     }
   }
 
-  // 全屏模式下视频宽度：视频宽高比窄于容器时按容器高度做信箱式留黑（不裁剪、不拉伸）
+  /**
+   * 进入全屏（控制栏按钮触发）：横屏视频旋转窗口到横屏，系统旋转动画即过渡动画，
+   * 布局由 windowSizeChange 跟随；竖屏视频保持竖屏窗口直接放大（B站样式）；
+   * 窗口已处于目标方向（平板横屏）时不旋转，直接切换全屏布局
+   */
+  private enterFullScreen(): void {
+    BLog.i('BiliPlayer enterFullScreen, aspRatio: ' + this.aspRatio
+      + ', isPortrait: ' + this.isPortrait);
+    WindowManager.setFullScreen(false);
+    if (this.aspRatio >= 1) {
+      if (this.isPortrait) {
+        // 竖窗 → 横窗：全屏布局跟随旋转
+        this.mPendingFsEnter = true;
+        WindowManager.changeWindowDirection(window.Orientation.LANDSCAPE);
+      } else {
+        // 窗口已是横屏（平板横屏）：直接进入全屏布局
+        this.getUIContext().animateTo({
+          duration: 300,
+          curve: Curve.EaseOut
+        }, () => {
+          this.mIsFullScreen = true;
+        });
+      }
+    } else {
+      if (this.isPortrait) {
+        // 竖屏视频 + 竖窗（手机）：B站样式直接放大
+        this.getUIContext().animateTo({
+          duration: 300,
+          curve: Curve.EaseOut
+        }, () => {
+          this.mIsFullScreen = true;
+        });
+      } else {
+        // 竖屏视频 + 横窗（平板横屏）：旋转回竖窗，旋转完成进入全屏
+        this.mPendingFsEnter = true;
+        WindowManager.rotateWindowPortrait();
+      }
+    }
+  }
+
+  /**
+   * 退出全屏：横屏全屏旋转窗口回竖屏（布局由 windowSizeChange 恢复）；
+   * 竖屏视频全屏动画收起，结束后恢复系统栏
+   */
+  private exitFullScreen(): void {
+    BLog.i('BiliPlayer exitFullScreen, isPortrait: ' + this.isPortrait);
+    if (!this.isPortrait) {
+      WindowManager.rotateWindowPortrait();
+    } else {
+      this.getUIContext().animateTo({
+        duration: 300,
+        curve: Curve.EaseOut,
+        onFinish: () => {
+          WindowManager.setFullScreen(true);
+        }
+      }, () => {
+        this.mIsFullScreen = false;
+      });
+    }
+  }
+
+  // 全屏模式下视频宽度：视频宽高比窄于容器时按容器做信箱式留黑（不裁剪、不拉伸）
   private fsXcWidth(): Length {
     if (!this.mIsFullScreen) {
       return '100%';
     }
-    let containerW: number = this.isPortrait ? this.mDisW : this.mDisH;
-    let containerH: number = this.isPortrait ? this.mDisH : this.mDisW;
-    if (containerW <= 0 || containerH <= 0) {
-      return '100%';
-    }
-    let containerRatio: number = containerW / containerH;
-    if (this.aspRatio >= containerRatio) {
+    // 全屏容器即窗口本身（横屏全屏为旋转后的横窗、竖屏视频全屏为竖窗）
+    let containerRatio: number = this.mWinW > 0 && this.mWinH > 0 ? this.mWinW / this.mWinH : this.aspRatio;
+    if (containerRatio <= 0 || this.aspRatio >= containerRatio) {
       return '100%';
     }
     return (this.aspRatio / containerRatio) * 100 + '%';
@@ -307,7 +387,13 @@ export struct PlayerView {
         mState: $mState,
         mIsShowCtl: $mIsShowCtl,
         danmakuPn: $danmakuPn,
-        mIsShowDanmaku: $mIsShowDanmaku
+        mIsShowDanmaku: $mIsShowDanmaku,
+        requestEnterFullScreen: (): void => {
+          this.enterFullScreen();
+        },
+        requestExitFullScreen: (): void => {
+          this.exitFullScreen();
+        }
       })
 
       if (this.replayVisible){
@@ -386,7 +472,7 @@ export struct PlayerView {
       }
 
     }.width('100%')
-    .aspectRatio(this.mIsFullScreen ? (this.isPortrait ? this.mFsPortraitRatio : this.mFsLandscapeRatio) : this.aspRatio)
+    .aspectRatio(this.mIsFullScreen && this.mWinW > 0 && this.mWinH > 0 ? this.mWinW / this.mWinH : this.aspRatio)
     .backgroundColor(Color.Black)
   }
 
@@ -590,7 +676,6 @@ export struct PlayerView {
 struct PlayerControlView {
   private player: IPlayer;
   private mDanmakuModel: DanmakuView.Model;
-  @StorageLink('isPortrait') isPortrait: boolean = true;
   @StorageLink('playerFullScreen') mIsFullScreen: boolean = false;
   @Link loadingVisible: boolean;
   @Link replayVisible: boolean;
@@ -602,6 +687,11 @@ struct PlayerControlView {
   @Link mIsShowCtl: boolean;
   @Link danmakuPn: number;
   @Link mIsShowDanmaku: boolean;
+  /** 进入/退出全屏请求：全屏时机与窗口旋转由 PlayerView 统一决策（需要视频宽高比） */
+  requestEnterFullScreen: () => void = () => {
+  };
+  requestExitFullScreen: () => void = () => {
+  };
   @State mShowSeekPreview: boolean = false;
   @State mSeekPreviewText: string = "";
   private mPanStartPos: number = 0;
@@ -616,12 +706,9 @@ struct PlayerControlView {
             .height(24)
             .onClick(_ => {
               if (this.mIsFullScreen) {
-                this.mIsFullScreen = false;
-              } else if (this.isPortrait) {
-                router.back();
+                this.requestExitFullScreen();
               } else {
-                WindowManager.changeWindowDirection(window.Orientation.PORTRAIT)
-                this.isPortrait = true
+                router.back();
               }
             })
 
@@ -660,7 +747,7 @@ struct PlayerControlView {
             step: 1,
             style: SliderStyle.OutSet
           })
-            .width(this.isPortrait ? '40%' : '70%')
+            .width(this.mIsFullScreen ? '70%' : '40%')
             .margin({ left: 12 })
             .blockColor(Color.White)
             .trackColor(Color.Gray)
@@ -700,14 +787,14 @@ struct PlayerControlView {
               .width(24)
               .height(24)
               .onClick(() => {
-                this.mIsFullScreen = true;
+                this.requestEnterFullScreen();
               })
           } else {
             Image($r('app.media.ic_player_fullscreen_switch_halfscreen'))
               .width(24)
               .height(24)
               .onClick(() => {
-                this.mIsFullScreen = false;
+                this.requestExitFullScreen();
               })
           }
         }.padding({ left: 8, right: 8, top: 4, bottom: 4 })
@@ -774,7 +861,7 @@ struct PlayerControlView {
       return;
     }
     let dis = display.getDefaultDisplaySync();
-    let ctlW: number = this.isPortrait ? dis.width : dis.height;
+    let ctlW: number = this.mIsFullScreen ? dis.height : dis.width;
     if (ctlW <= 0) {
       return;
     }

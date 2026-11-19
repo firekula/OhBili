@@ -104,4 +104,66 @@ export class WindowManager {
             })
         }
     }
+
+    /**
+     * 获取应用主窗口（同步）：windowStage 未就绪或获取失败时返回 null
+     */
+    static getMainWindow(): window.Window | null {
+        if (globalThis.windowStage != undefined) {
+            try {
+                return globalThis.windowStage.getMainWindowSync();
+            } catch (err) {
+                console.error('WindowManager getMainWindow failed: ' + JSON.stringify(err));
+                return null;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 状态栏避让高度（px）：沉浸式全屏布局下，内容需要向下避让的系统区高度
+     */
+    static getStatusBarAvoidHeight(): number {
+        let win = WindowManager.getMainWindow();
+        if (win != null) {
+            try {
+                let avoid = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
+                return avoid.topRect.height;
+            } catch (err) {
+                console.error('WindowManager getStatusBarAvoidHeight failed: ' + JSON.stringify(err));
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * 导航条（手势指示条）避让高度（px）：沉浸式全屏布局下，内容需要向上避让的系统区高度
+     */
+    static getNavBarAvoidHeight(): number {
+        let win = WindowManager.getMainWindow();
+        if (win != null) {
+            try {
+                let avoid = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR);
+                return avoid.bottomRect.height;
+            } catch (err) {
+                console.error('WindowManager getNavBarAvoidHeight failed: ' + JSON.stringify(err));
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * 旋转窗口回竖屏（退出横屏全屏）：布局恢复由 windowSizeChange 回调跟随，
+     * 不在旋转前预先改布局（setPreferredOrientation 存在延迟，先改布局会造成割裂动画）
+     */
+    static rotateWindowPortrait(): void {
+        WindowManager.changeWindowDirection(window.Orientation.PORTRAIT);
+    }
+
+    /**
+     * 锁定窗口为竖屏（进入视频页时防止传感器旋转）
+     */
+    static lockPortrait(): void {
+        WindowManager.rotateWindowPortrait();
+    }
 }

@@ -32,7 +32,7 @@ struct VideoPlayer {
   private startAt: number = router.getParams()['startAt'] ?? 0;
   /** 本地视频文件绝对路径（离线缓存跳入时传入，空=在线播放） */
   private localPath: string = router.getParams()['localPath'] ?? '';
-  @StorageLink('isPortrait') @Watch('onPortraitUpdated') isPortrait: boolean = true;
+  @StorageLink('isPortrait') isPortrait: boolean = true;
   @State currentIndex: number = 0;
   @StorageLink('replyCount') @Watch('onCountUpdated') replyCount: number = 0;
   @State tabTitle: ResourceStr[] = [$r('app.string.video_overview'), $r('app.string.video_reply', 0)];
@@ -43,8 +43,23 @@ struct VideoPlayer {
   @State fansCount: number = 0;
   @State archiveCount: number = 0;
   @State isFollowing: Boolean = false;
+  /** 沉浸式布局下状态栏/导航条避让高度（vp），非全屏时以 padding 避让 */
+  @State statusBarPad: number = 0;
+  @State navBarPad: number = 0;
 
   aboutToAppear() {
+    // 全屏态推入的视频页（关联视频在横屏全屏下顶入）保持横屏窗口不回竖；
+    // 非全屏进入则锁定竖屏，防止传感器旋转
+    if (!this.playerFullScreen) {
+      WindowManager.lockPortrait();
+    }
+    // 视频页沉浸式：窗口全屏布局 + 透明系统栏，系统栏显示/隐藏不再引起窗口尺寸跳变
+    WindowManager.setLayoutFullScreen(true, '#00000000', '#ffffff', '#00000000', '#182431');
+    this.statusBarPad = px2vp(WindowManager.getStatusBarAvoidHeight());
+    this.navBarPad = px2vp(WindowManager.getNavBarAvoidHeight());
+    // 叠栈计数：仅最后一个视频页销毁时才退出沉浸式，避免上层视频页返回时破坏下层沉浸状态
+    let cnt: number = AppStorage.get<number>('videoPageCount') ?? 0;
+    AppStorage.setOrCreate('videoPageCount', cnt + 1);
     this.replyItem = null;
     if (this.vInfo.stat.reply != undefined) {
       this.replyCount = this.vInfo.stat.reply;
@@ -103,9 +118,23 @@ struct VideoPlayer {
     if (this.playerLocked) {
       return true;
     }
-    // 全屏态先退全屏（PlayerView 的 Watch 负责旋转与系统栏恢复）
+    // 全屏态先退全屏（与 PlayerView.exitFullScreen 逻辑一致）：
+    // 横屏全屏旋转窗口回竖屏（布局由 windowSizeChange 跟随恢复）；
+    // 竖屏视频全屏（B站样式，窗口未旋转）动画收起，结束后恢复系统栏
     if (this.playerFullScreen) {
-      this.playerFullScreen = false;
+      if (!this.isPortrait) {
+        WindowManager.rotateWindowPortrait();
+      } else {
+        this.getUIContext().animateTo({
+          duration: 300,
+          curve: Curve.EaseOut,
+          onFinish: () => {
+            WindowManager.setFullScreen(true);
+          }
+        }, () => {
+          this.playerFullScreen = false;
+        });
+      }
       return true;
     }
     if (this.replyItem != null) {
@@ -116,13 +145,22 @@ struct VideoPlayer {
 
   aboutToDisappear() {
     this.pageState = "aboutToDisappear";
+    // 叠栈计数：仅最后一个视频页销毁时恢复系统栏与退出沉浸式布局
+    let cnt: number = AppStorage.get<number>('videoPageCount') ?? 1;
+    AppStorage.setOrCreate('videoPageCount', cnt - 1);
+    if (cnt - 1 <= 0) {
+      // 离开视频页兜底恢复系统栏与退出沉浸式布局（全屏状态下页面直接销毁的场景）
+      WindowManager.setFullScreen(true);
+      WindowManager.setLayoutFullScreen(false, WindowManager.COLOR_WHITE, WindowManager.COLOR_BLACK,
+        WindowManager.COLOR_WHITE, WindowManager.COLOR_BLACK);
+      if (!this.isPortrait) {
+        // 窗口仍横屏（绕过 onBackPress 的销毁路径）：旋转回竖屏并同步方向状态
+        WindowManager.rotateWindowPortrait();
+        this.isPortrait = true;
+      }
+    }
     DataSourceManager.deleteRelatedMapSource(this.vInfo.bvid);
     DataSourceManager.deleteReplyMapSource(this.vInfo.bvid);
-  }
-
-  onPortraitUpdated(propName: string): void {
-    BLog.i('IjkPlayer onPortraitUpdated isPortrait:' + this.isPortrait);
-    WindowManager.setFullScreen(this.isPortrait);
   }
 
   onCountUpdated(propName: string): void {
@@ -181,5 +219,10 @@ struct VideoPlayer {
       }
     }
     .width('100%').height('100%')
+    // 沉浸式布局：非全屏时内容避让状态栏/导航条，全屏时铺满窗口
+    .padding({
+      top: this.playerFullScreen ? 0 : this.statusBarPad,
+      bottom: this.playerFullScreen ? 0 : this.navBarPad
+    })
   }
 }
