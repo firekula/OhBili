@@ -241,7 +241,8 @@ export struct VideoReply {
       } else if (action !== 1 && prevAction === 1) {
         item.like = prevLike - 1;
       }
-      item.action = action;
+      // 请求动作 0=取消赞 1=赞 2=踩 3=取消踩 → 模型值 0=无 1=赞 2=踩（取消后归 0）
+      item.action = (action === 1 || action === 2) ? action : 0;
       DataSourceManager.getReplySource(this.vInfo.bvid).notifyDataReload();
       ApiManager.getInstance()
         .requestReplyAction(aid, item.rpid, action)
@@ -274,6 +275,54 @@ export struct VideoReply {
     this.showToast('评论已复制');
   }
 
+  /** 删除自己的评论（AlertDialog 二次确认后调用 x/v2/reply/del） */
+  private onDeleteReply(item: ReplyItem): void {
+    AlertDialog.show({
+      title: '删除评论',
+      message: '删除后不可恢复，确定删除这条评论吗？',
+      primaryButton: {
+        value: '取消',
+        action: () => {
+        }
+      },
+      secondaryButton: {
+        value: '删除',
+        fontColor: '#fb7299',
+        action: () => {
+          this.doDeleteReply(item);
+        }
+      }
+    });
+  }
+
+  private doDeleteReply(item: ReplyItem): void {
+    this.resolveAid().then((aid: number) => {
+      if (aid <= 0) {
+        this.showToast('视频信息获取失败，请重试');
+        return;
+      }
+      ApiManager.getInstance()
+        .requestReplyDel(aid, item.rpid)
+        .then((ok: boolean) => {
+          if (ok) {
+            DataSourceManager.getReplySource(this.vInfo.bvid).removeData(item);
+            if (this.replyTarget === item) {
+              this.replyTarget = null;
+            }
+            this.replyCount = Math.max(0, this.replyCount - 1);
+            this.showToast('已删除');
+          } else {
+            this.showToast('删除失败，请重试');
+          }
+        })
+        .catch(() => {
+          this.showToast('删除失败，请重试');
+        });
+    }).catch(() => {
+      this.showToast('视频信息获取失败，请重试');
+    });
+  }
+
   private showToast(message: string): void {
     this.getUIContext().getPromptAction().showToast({ message: message });
   }
@@ -296,6 +345,9 @@ export struct VideoReply {
             },
             onShare: (target: ReplyItem) => {
               this.onShareReply(target);
+            },
+            onDelete: (target: ReplyItem) => {
+              this.onDeleteReply(target);
             }
           })
         }

@@ -12,6 +12,7 @@
 import { ReplyItem } from './../../model/response/ReplyResponse';
 import { ResUtils } from './../../utils/ResUtils';
 import { StringUtil } from './../../utils/StringUtil';
+import { LoginHelper } from './../../utils/LoginHelper';
 import { ReplyTextView } from './ReplyTextView';
 
 @Component
@@ -19,12 +20,14 @@ export struct ReplyItemView {
   private item: ReplyItem;
   private isShowReply: boolean = false;
   private onItemClick: () => void = () => {}
-  /** 点赞/点踩（action 1=赞 2=踩；重复同值取消） */
+  /** 点赞/点踩（请求动作 0=取消赞 1=赞 2=踩 3=取消踩；item.action 模型值仍为 0/1/2） */
   private onAction: (item: ReplyItem, action: number) => void = () => {}
   /** 回复该评论（唤起评论输入框） */
   private onReply: (item: ReplyItem) => void = () => {}
   /** 分享（复制评论内容） */
   private onShare: (item: ReplyItem) => void = () => {}
+  /** 删除自己的评论（仅本人评论的长按菜单中显示） */
+  private onDelete: (item: ReplyItem) => void = () => {}
 
   build() {
     Row() {
@@ -96,8 +99,8 @@ export struct ReplyItemView {
           }.alignItems(VerticalAlign.Center)
           .padding({ top: 4, bottom: 4, right: 8, left: 8 })
           .onClick(() => {
-            // 已踩 → 再点取消踩；未踩/已赞 → 点踩
-            this.onAction(this.item, this.item.action === 2 ? 0 : 2);
+            // 已踩 → 再点取消踩(3)；未踩/已赞 → 点踩(2)
+            this.onAction(this.item, this.item.action === 2 ? 3 : 2);
           })
 
           Row() {
@@ -165,5 +168,29 @@ export struct ReplyItemView {
     .justifyContent(FlexAlign.Start)
     .alignItems(VerticalAlign.Top)
     .margin({ top: 8, bottom: 8 })
+    // 长按评论弹出操作菜单：复制；本人评论额外显示删除
+    .bindContextMenu(this.ReplyMenuBuilder(), ResponseType.LongPress)
+  }
+
+  /** 是否本人评论（长按菜单"删除"项显示条件） */
+  private isOwnReply(): boolean {
+    return this.item != null && this.item.member != null
+      && LoginHelper.isSelfMid(this.item.member.mid);
+  }
+
+  @Builder
+  ReplyMenuBuilder() {
+    Menu() {
+      MenuItem({ content: '复制评论内容' })
+        .onClick(() => {
+          this.onShare(this.item);
+        })
+      if (this.isOwnReply()) {
+        MenuItem({ content: '删除' })
+          .onClick(() => {
+            this.onDelete(this.item);
+          })
+      }
+    }
   }
 }

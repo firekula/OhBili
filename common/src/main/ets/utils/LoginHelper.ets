@@ -118,6 +118,16 @@ export class LoginHelper {
   }
 
   /**
+   * 判断给定 mid 是否为当前登录用户本人（评论"删除自己评论"入口显示条件）。
+   * 未登录或 mid 为空返回 false。
+   */
+  static isSelfMid(mid: string): boolean {
+    let loggedIn: boolean = AppStorage.get<boolean>(LoginHelper.KEY_LOGGED_IN) ?? false;
+    let selfId: string = AppStorage.get<string>(LoginHelper.KEY_DEDE_USER_ID) ?? '';
+    return loggedIn && mid !== '' && selfId !== '' && mid === selfId;
+  }
+
+  /**
    * 确保设备 Cookie（buvid3/buvid4）就绪：
    * 键为空时经官方指纹接口（x/frontend/finger/spi）获取并持久化写入；
    * 获取失败使用本地随机 UUID 兜底（buvid3 形态对齐官方：UUID+infoc），并告警。

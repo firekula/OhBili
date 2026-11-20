@@ -83,6 +83,8 @@ export class DataService extends BaseService {
    * @param @Query('wts') wts 签名时间戳
    */
   @GET("x/web-interface/index/top/feed/rcmd")
+  // 必须带浏览器 UA/Referer：gaia 风控按请求头指纹放行，缺失时连刷几次即被拦截（推荐刷不出）
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
   async getRecommend(@Header('Cookie') cookie: string,
                      @Query('ps') ps: number,
                      @Query('fresh_idx_1h') fresh_idx_1h: number,
@@ -163,10 +165,11 @@ export class DataService extends BaseService {
   };
 
   /**
-   * 评论点赞/点踩（POST，csrf 鉴权）
+   * 评论点赞/取消点赞（POST，csrf 鉴权）
+   * 注：本端点仅接受 action 1=点赞 0=取消点赞，点踩传 2 会返回 12011「不合法的赞或踩」，
+   * 点踩必须走 replyHate 端点
    * @param oid 视频 aid
    * @param rpid 评论 rpid
-   * @param action 1=点赞 2=点踩（重复同值=取消）
    */
   @POST("x/v2/reply/action")
   @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
@@ -176,6 +179,24 @@ export class DataService extends BaseService {
                     @Query('rpid') rpid: number,
                     @Query('action') action: number,
                     @Query('csrf') csrf: string):
+    Promise<Response<EmptyResponse>> {
+    return <Response<EmptyResponse>> {}
+  };
+
+  /**
+   * 评论点踩/取消点踩（POST，csrf 鉴权）——独立于点赞的端点
+   * @param oid 视频 aid
+   * @param rpid 评论 rpid
+   * @param action 1=点踩 0=取消点踩
+   */
+  @POST("x/v2/reply/hate")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async replyHate(@Header('Cookie') cookie: string,
+                  @Query('oid') oid: number,
+                  @Query('type') type: number,
+                  @Query('rpid') rpid: number,
+                  @Query('action') action: number,
+                  @Query('csrf') csrf: string):
     Promise<Response<EmptyResponse>> {
     return <Response<EmptyResponse>> {}
   };
@@ -196,6 +217,22 @@ export class DataService extends BaseService {
                  @Query('parent') parent: number,
                  @Query('message') message: string,
                  @Query('plat') plat: number,
+                 @Query('csrf') csrf: string):
+    Promise<Response<EmptyResponse>> {
+    return <Response<EmptyResponse>> {}
+  };
+
+  /**
+   * 删除自己的评论（POST，csrf 鉴权，仅限本人评论）
+   * @param oid 视频 aid
+   * @param rpid 评论 rpid
+   */
+  @POST("x/v2/reply/del")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async replyDel(@Header('Cookie') cookie: string,
+                 @Query('oid') oid: number,
+                 @Query('type') type: number,
+                 @Query('rpid') rpid: number,
                  @Query('csrf') csrf: string):
     Promise<Response<EmptyResponse>> {
     return <Response<EmptyResponse>> {}

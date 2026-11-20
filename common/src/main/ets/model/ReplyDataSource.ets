@@ -53,4 +53,17 @@ export class ReplyDataSource extends BasicDataSource {
     this.dataArray.push(data);
     this.notifyDataAdd(this.dataArray.length - 1);
   }
+
+  /**
+   * 按对象引用移除一条评论（删除自己的评论用），未命中返回 false
+   */
+  public removeData(data: ReplyItem): boolean {
+    const idx: number = this.dataArray.indexOf(data);
+    if (idx < 0) {
+      return false;
+    }
+    this.dataArray.splice(idx, 1);
+    this.notifyDataDelete(idx);
+    return true;
+  }
 }

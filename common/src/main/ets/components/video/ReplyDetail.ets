@@ -93,6 +93,10 @@ export struct ReplyDetailView {
             // 可选项，下拉刷新回调
             onRefresh: () => {
               return new Promise<string>((resolve) => {
+                if (this.replyItem == null) {
+                  resolve('');
+                  return;
+                }
                 this.pn = 1;
                 DataSourceManager.getReplyDetailSource().setData([this.replyItem]);
                 ApiManager.getInstance()
@@ -114,7 +118,7 @@ export struct ReplyDetailView {
             // 可选项，上拉加载更多回调
             onLoadMore: () => {
               return new Promise<string>((resolve) => {
-                if (this.isEnd) {
+                if (this.isEnd || this.replyItem == null) {
                   resolve('');
                   return;
                 }
@@ -144,9 +148,9 @@ export struct ReplyDetailView {
           Row() {
             TextInput({
               text: this.inputText,
-              placeholder: this.replyTarget != null && this.replyTarget.rpid !== this.replyItem.rpid
-                ? '回复 @' + this.replyTarget.member.uname + ':'
-                : '回复 ' + this.replyItem.member.uname + ':'
+              // 关闭面板瞬间 replyItem 被置 null 而组件仍会 rerender 一次，
+              // placeholder 计算必须判空，否则 "Cannot read property member of null" 闪退
+              placeholder: this.getReplyPlaceholder()
             })
               .layoutWeight(1)
               .height(36)
@@ -184,8 +188,21 @@ export struct ReplyDetailView {
     return !this.isSending && this.inputText.trim().length > 0;
   }
 
+  /**
+   * 底部输入框占位文案（关闭中 replyItem 可能为 null，必须判空）
+   */
+  private getReplyPlaceholder(): string {
+    if (this.replyItem == null) {
+      return '';
+    }
+    if (this.replyTarget != null && this.replyTarget.rpid !== this.replyItem.rpid) {
+      return '回复 @' + this.replyTarget.member.uname + ':';
+    }
+    return '回复 ' + this.replyItem.member.uname + ':';
+  }
+
   private onSendClick(): void {
-    if (!this.canSend()) {
+    if (!this.canSend() || this.replyItem == null) {
       return;
     }
     let message: string = this.inputText.trim();
@@ -207,21 +224,23 @@ export struct ReplyDetailView {
             this.inputText = '';
             this.replyTarget = null;
             this.showToast('回复成功');
-            // 刷新楼中楼列表并更新根评论回复数
-            this.replyItem.rcount = (this.replyItem.rcount ?? 0) + 1;
-            this.pn = 1;
-            DataSourceManager.getReplyDetailSource().setData([this.replyItem]);
-            ApiManager.getInstance()
-              .requestReplyDetail(this.vInfo.bvid, this.replyItem.rpid, this.pn, 1)
-              .then((cursor: ReplyPage) => {
-                if (cursor != null) {
-                  let isEnd = cursor.num * cursor.size >= cursor.count;
-                  this.refreshOpt.enableLoadMore = !isEnd;
-                  this.isEnd = isEnd;
-                }
-              })
-              .catch(() => {
-              });
+            // 刷新楼中楼列表并更新根评论回复数（面板可能已被关闭，整块判空）
+            if (this.replyItem != null) {
+              this.replyItem.rcount = (this.replyItem.rcount ?? 0) + 1;
+              this.pn = 1;
+              DataSourceManager.getReplyDetailSource().setData([this.replyItem]);
+              ApiManager.getInstance()
+                .requestReplyDetail(this.vInfo.bvid, this.replyItem.rpid, this.pn, 1)
+                .then((cursor: ReplyPage) => {
+                  if (cursor != null) {
+                    let isEnd = cursor.num * cursor.size >= cursor.count;
+                    this.refreshOpt.enableLoadMore = !isEnd;
+                    this.isEnd = isEnd;
+                  }
+                })
+                .catch(() => {
+                });
+            }
           } else {
             this.showToast('回复失败，请重试');
           }
@@ -270,7 +289,8 @@ export struct ReplyDetailView {
       } else if (action !== 1 && prevAction === 1) {
         item.like = prevLike - 1;
       }
-      item.action = action;
+      // 请求动作 0=取消赞 1=赞 2=踩 3=取消踩 → 模型值 0=无 1=赞 2=踩（取消后归 0）
+      item.action = (action === 1 || action === 2) ? action : 0;
       DataSourceManager.getReplyDetailSource().notifyDataReload();
       ApiManager.getInstance()
         .requestReplyAction(aid, item.rpid, action)
@@ -303,6 +323,66 @@ export struct ReplyDetailView {
     this.showToast('评论已复制');
   }
 
+  /** 删除自己的评论（根评论删除后整个楼中楼关闭；子回复从列表移除并扣减计数） */
+  private onDeleteReply(item: ReplyItem): void {
+    AlertDialog.show({
+      title: '删除评论',
+      message: '删除后不可恢复，确定删除这条评论吗？',
+      primaryButton: {
+        value: '取消',
+        action: () => {
+        }
+      },
+      secondaryButton: {
+        value: '删除',
+        fontColor: '#fb7299',
+        action: () => {
+          this.doDeleteReply(item);
+        }
+      }
+    });
+  }
+
+  private doDeleteReply(item: ReplyItem): void {
+    if (this.replyItem == null) {
+      return;
+    }
+    this.resolveAid().then((aid: number) => {
+      if (aid <= 0) {
+        this.showToast('视频信息获取失败，请重试');
+        return;
+      }
+      ApiManager.getInstance()
+        .requestReplyDel(aid, item.rpid)
+        .then((ok: boolean) => {
+          if (!ok) {
+            this.showToast('删除失败，请重试');
+            return;
+          }
+          this.showToast('已删除');
+          if (item.rpid === this.replyItem.rpid) {
+            // 删除的是根评论：同步移除主列表中的该评论，整个楼中楼关闭
+            DataSourceManager.getReplySource(this.vInfo.bvid).removeData(item);
+            this.replyItem = null;
+          } else {
+            // 删除的是子回复：从楼中楼列表移除并扣减根评论回复数
+            DataSourceManager.getReplyDetailSource().removeData(item);
+            if (this.replyTarget === item) {
+              this.replyTarget = null;
+            }
+            if (this.replyItem != null) {
+              this.replyItem.rcount = Math.max(0, (this.replyItem.rcount ?? 0) - 1);
+            }
+          }
+        })
+        .catch(() => {
+          this.showToast('删除失败，请重试');
+        });
+    }).catch(() => {
+      this.showToast('视频信息获取失败，请重试');
+    });
+  }
+
   private showToast(message: string): void {
     this.getUIContext().getPromptAction().showToast({ message: message });
   }
@@ -324,6 +404,9 @@ export struct ReplyDetailView {
                 },
                 onShare: (target: ReplyItem) => {
                   this.onShareReply(target);
+                },
+                onDelete: (target: ReplyItem) => {
+                  this.onDeleteReply(target);
                 }
               }).padding({ left: 16, right: 16 })
               Flex().width('100%').height(16).backgroundColor($r('app.color.page_bg'))
@@ -345,6 +428,9 @@ export struct ReplyDetailView {
                 },
                 onShare: (target: ReplyItem) => {
                   this.onShareReply(target);
+                },
+                onDelete: (target: ReplyItem) => {
+                  this.onDeleteReply(target);
                 }
               }).padding({ left: 16, right: 16 })
               Flex().width('100%').height(0.5)

@@ -111,6 +111,13 @@ export class TaskManager {
     return response;
   }
 
+  async requestReplyDel(cookie: string, oid: number, type: number, rpid: number,
+                        csrf: string): Promise<ApiResponse<EmptyResponse>> {
+    var task = new taskPool.Task(requestReplyDelTask, cookie, oid, type, rpid, csrf);
+    var response = await taskPool.execute(task) as ApiResponse<EmptyResponse>;
+    return response;
+  }
+
 
   async requestDmList(oid: number, type: number, index: number): Promise<ApiResponse<Uint8Array>> {
     var task = new taskPool.Task(requestDmListTask, oid, type, index);
@@ -515,7 +522,15 @@ async function requestReplyActionTask(cookie: string, oid: number, type: number,
     let dataService = new ServiceBuilder()
       .setEndpoint(ApiConstants.apiBase)
       .build(DataService);
-    let resp: Response<EmptyResponse> = await dataService.replyAction(cookie, oid, type, rpid, action, csrf);
+    // 请求层 action 约定：0=取消赞 1=赞 2=踩 3=取消踩
+    // 点赞/取消赞走 x/v2/reply/action（1/0）；点踩/取消踩走 x/v2/reply/hate（1/0）。
+    // action 端点不接受 2，实测返回 12011「不合法的赞或踩」，host×UA 变体均无法绕过
+    let resp: Response<EmptyResponse>;
+    if (action === 2 || action === 3) {
+      resp = await dataService.replyHate(cookie, oid, type, rpid, action === 2 ? 1 : 0, csrf);
+    } else {
+      resp = await dataService.replyAction(cookie, oid, type, rpid, action, csrf);
+    }
     code = resp.code();
     message = resp.message();
     result = resp.result;
@@ -547,6 +562,27 @@ async function requestReplyAddTask(cookie: string, oid: number, type: number, ro
     errMsg = err + "";
   }
   return new ApiResponse(result, code, errMsg);
+}
+
+async function requestReplyDelTask(cookie: string, oid: number, type: number, rpid: number,
+                                   csrf: string): Promise<ApiResponse<EmptyResponse>> {
+  "use concurrent"
+  let code: number = 0
+  let message: string = ""
+  let result: EmptyResponse
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<EmptyResponse> = await dataService.replyDel(cookie, oid, type, rpid, csrf);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
 }
 
 

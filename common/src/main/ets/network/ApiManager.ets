@@ -199,7 +199,8 @@ export class ApiManager {
   }
 
   /**
-   * 评论点赞/点踩（csrf 鉴权）：action 1=点赞 2=点踩，重复同值=取消
+   * 评论点赞/点踩（csrf 鉴权）：请求动作 0=取消赞 1=赞 2=踩 3=取消踩
+   * （任务层路由：1/0 走 x/v2/reply/action，2/3 走 x/v2/reply/hate）
    * @param oid 视频 aid
    */
   async requestReplyAction(oid: number, rpid: number, action: number): Promise<boolean> {
@@ -209,6 +210,24 @@ export class ApiManager {
     let response = await TaskManager.getInstance().requestReplyAction(cookie, oid, 1, rpid, action, csrf);
     if (response.code == -1 || response.result == null || response.result.code != 0) {
       BLog.e("requestReplyAction failed, code=" + response.code
+        + ", bizCode=" + (response.result == null ? -1 : response.result.code)
+        + ", msg=" + response.message);
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * 删除自己的评论（csrf 鉴权，仅限本人评论）
+   * @param oid 视频 aid
+   */
+  async requestReplyDel(oid: number, rpid: number): Promise<boolean> {
+    BLog.d("requestReplyDel oid=" + oid + ", rpid=" + rpid);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    let csrf: string = ApiManager.getCsrf();
+    let response = await TaskManager.getInstance().requestReplyDel(cookie, oid, 1, rpid, csrf);
+    if (response.code == -1 || response.result == null || response.result.code != 0) {
+      BLog.e("requestReplyDel failed, code=" + response.code
         + ", bizCode=" + (response.result == null ? -1 : response.result.code)
         + ", msg=" + response.message);
       return false;
