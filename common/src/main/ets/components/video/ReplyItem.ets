@@ -12,13 +12,19 @@
 import { ReplyItem } from './../../model/response/ReplyResponse';
 import { ResUtils } from './../../utils/ResUtils';
 import { StringUtil } from './../../utils/StringUtil';
-
+import { ReplyTextView } from './ReplyTextView';
 
 @Component
 export struct ReplyItemView {
   private item: ReplyItem;
   private isShowReply: boolean = false;
   private onItemClick: () => void = () => {}
+  /** 点赞/点踩（action 1=赞 2=踩；重复同值取消） */
+  private onAction: (item: ReplyItem, action: number) => void = () => {}
+  /** 回复该评论（唤起评论输入框） */
+  private onReply: (item: ReplyItem) => void = () => {}
+  /** 分享（复制评论内容） */
+  private onShare: (item: ReplyItem) => void = () => {}
 
   build() {
     Row() {
@@ -31,7 +37,7 @@ export struct ReplyItemView {
         Row() {
           Text(this.item.member.uname)
             .fontSize(14)
-            .fontColor('#333333')
+            .fontColor($r('app.color.text_primary'))
             .fontWeight(FontWeight.Regular)
             .maxLines(1)
           Image(ResUtils.getLevel(this.item.member.level_info.current_level))
@@ -43,63 +49,99 @@ export struct ReplyItemView {
         Row() {
           Text(StringUtil.timeStampToAgoDate(this.item.ctime))
             .fontSize(11)
-            .fontColor('#aaaaaa')
+            .fontColor($r('app.color.text_faint'))
             .height(20)
-          Text("IP属地:")
-            .fontSize(11)
-            .fontColor('#aaaaaa')
-            .height(20)
-            .margin({ left: 6 })
+          if (this.item.reply_control != null && this.item.reply_control.location != null
+            && this.item.reply_control.location.length > 0) {
+            Text("IP属地:" + this.item.reply_control.location)
+              .fontSize(11)
+              .fontColor($r('app.color.text_faint'))
+              .height(20)
+              .margin({ left: 6 })
+          }
         }.width('100%')
         .justifyContent(FlexAlign.Start)
 
-        Text(this.item.content.message)
-          .fontSize(16)
-          .fontColor('#333333')
-          .fontWeight(FontWeight.Regular)
-          .width('100%')
-          .textAlign(TextAlign.Start)
-          .maxLines(this.item.content.max_line)
+        ReplyTextView({
+          message: this.item.content.message,
+          emote: this.item.content.emote,
+          fontSize: 16,
+          fontColor: $r('app.color.text_primary'),
+          maxLines: this.item.content.max_line
+        })
           .margin({ top: 12, bottom: 12 })
 
         Row() {
-          Image($r('app.media.ic_upper_likes'))
-            .height(20)
-          Text(this.item.like + "")
-            .fontSize(11)
-            .fontColor('#aaaaaa')
-            .height(20)
-            .margin({ left: 6 })
-          Image($r('app.media.ic_upper_dislike'))
-            .height(20)
-            .margin({ left: 16 })
-          Image($r('app.media.ic_upper_shares'))
-            .height(20)
-            .margin({ left: 16 })
-          Image($r('app.media.ic_upper_comments'))
-            .height(20)
-            .margin({ left: 16 })
+          Row() {
+            Image($r('app.media.ic_reply_like'))
+              .width(18)
+              .height(18)
+              .fillColor(this.item.action === 1 ? '#fb7299' : $r('app.color.text_tertiary'))
+            Text(this.item.like + "")
+              .fontSize(11)
+              .fontColor(this.item.action === 1 ? '#fb7299' : $r('app.color.text_faint'))
+              .margin({ left: 4 })
+          }.alignItems(VerticalAlign.Center)
+          .padding({ top: 4, bottom: 4, right: 8 })
+          .onClick(() => {
+            // 已赞 → 再点取消赞；未赞/已踩 → 点赞
+            this.onAction(this.item, this.item.action === 1 ? 0 : 1);
+          })
+
+          Row() {
+            Image($r('app.media.ic_reply_dislike'))
+              .width(18)
+              .height(18)
+              .fillColor(this.item.action === 2 ? '#fb7299' : $r('app.color.text_tertiary'))
+          }.alignItems(VerticalAlign.Center)
+          .padding({ top: 4, bottom: 4, right: 8, left: 8 })
+          .onClick(() => {
+            // 已踩 → 再点取消踩；未踩/已赞 → 点踩
+            this.onAction(this.item, this.item.action === 2 ? 0 : 2);
+          })
+
+          Row() {
+            Text("分享")
+              .fontSize(11)
+              .fontColor($r('app.color.text_faint'))
+          }.alignItems(VerticalAlign.Center)
+          .padding({ top: 4, bottom: 4, right: 8, left: 8 })
+          .onClick(() => {
+            this.onShare(this.item);
+          })
+
+          Row() {
+            Text("回复")
+              .fontSize(11)
+              .fontColor($r('app.color.text_faint'))
+          }.alignItems(VerticalAlign.Center)
+          .padding({ top: 4, bottom: 4, right: 8, left: 8 })
+          .onClick(() => {
+            this.onReply(this.item);
+          })
         }.width('100%')
         .justifyContent(FlexAlign.Start)
 
-        if (this.item.replies != null && this.isShowReply) {
+        // 预览区：有子回复预览或有更多回复（rcount>0）时显示；replies 为 null 但有统计数时仍显示入口
+        if ((this.item.replies != null || this.item.rcount > 0) && this.isShowReply) {
           Column() {
-            ForEach(this.item.replies,
+            ForEach(this.item.replies == null ? new Array<ReplyItem>() : this.item.replies,
               (item: ReplyItem) => {
                 Column() {
-                  Text(){
-                    Span(item.member.uname + ' ').fontSize(14)
-                      .fontColor(Color.Blue).padding({ right: 4 })
-                    Span(item.content.message).fontSize(14)
-                      .fontColor('#333333')
-                  }.width('100%')
-                  .textAlign(TextAlign.Start)
-                  .maxLines(2)
-                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  ReplyTextView({
+                    message: item.content.message,
+                    emote: item.content.emote,
+                    fontSize: 14,
+                    fontColor: $r('app.color.text_primary'),
+                    maxLines: 2,
+                    prefix: item.member.uname + ': ',
+                    prefixColor: '#1698CE'
+                  })
                 }.padding({ top: 12 })
-              }, item => item.mid)
+              }, item => item.rpid + '')
 
-            if (this.item.replies.length >= 3) {
+            // x/v2/reply/main 每条评论最多返回 2 条子回复预览，按 rcount 判断是否有更多回复（原 replies.length>=3 永远不成立，导致详情页不可达）
+            if (this.item.rcount > 0) {
               Text("共" + this.item.rcount + "条回复 >")
                 .fontSize(14)
                 .fontColor(Color.Blue)
@@ -114,7 +156,7 @@ export struct ReplyItemView {
           .width('100%')
           .padding({ left: 8, right: 8, bottom: 12 })
           .margin({ top: 8 })
-          .backgroundColor("#88eeeeee")
+          .backgroundColor($r('app.color.surface_soft'))
           .borderRadius(4)
         }
 

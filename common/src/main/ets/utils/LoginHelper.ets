@@ -32,6 +32,7 @@ export class LoginHelper {
   private static readonly KEY_FACE: string = 'ohBiliFace';
   private static readonly KEY_BUVID3: string = 'ohBiliBuvid3';
   private static readonly KEY_BUVID4: string = 'ohBiliBuvid4';
+  private static readonly KEY_VIP_STATUS: string = 'ohBiliVipStatus';
 
   /**
    * 从轮询成功返回的 crossDomain URL 中解析 query 参数（SESSDATA/bili_jct/DedeUserID 等）。
@@ -208,6 +209,7 @@ export class LoginHelper {
     AppStorage.setOrCreate(LoginHelper.KEY_REFRESH_TOKEN, '');
     AppStorage.setOrCreate(LoginHelper.KEY_UNAME, '');
     AppStorage.setOrCreate(LoginHelper.KEY_FACE, '');
+    AppStorage.setOrCreate(LoginHelper.KEY_VIP_STATUS, 0);
   }
 
   /**
@@ -228,6 +230,7 @@ export class LoginHelper {
       if (navData != null && navData.isLogin) {
         AppStorage.setOrCreate(LoginHelper.KEY_UNAME, navData.uname ?? '');
         AppStorage.setOrCreate(LoginHelper.KEY_FACE, navData.face ?? '');
+        AppStorage.setOrCreate(LoginHelper.KEY_VIP_STATUS, navData.vipStatus ?? 0);
         AppStorage.setOrCreate(LoginHelper.KEY_LOGGED_IN, true);
         return true;
       }

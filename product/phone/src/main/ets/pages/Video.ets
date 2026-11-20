@@ -14,6 +14,7 @@ import router from '@ohos.router';
 import { VideoReply } from '@ohos/common';
 import { VideoOverview } from '@ohos/common';
 import { WindowManager } from '@ohos/common';
+import { ThemeUtil } from '@ohos/common';
 import { BaseVideo, EmptyBaseVideo, EmptyStat, Stat } from '@ohos/common';
 import { StringUtil } from '@ohos/common';
 import { ReplyCursor, ReplyItem } from '@ohos/common';
@@ -46,6 +47,10 @@ struct VideoPlayer {
   /** 沉浸式布局下状态栏/导航条避让高度（vp），非全屏时以 padding 避让 */
   @State statusBarPad: number = 0;
   @State navBarPad: number = 0;
+  /** 沉浸式布局是否已应用（每页仅一次，防 onPageShow 重复触发） */
+  private immersiveApplied: boolean = false;
+  /** 延迟应用沉浸式的定时器 id（页面销毁时清理，防止快速返回后误触发） */
+  private immersiveTimer: number = -1;
 
   aboutToAppear() {
     // 全屏态推入的视频页（关联视频在横屏全屏下顶入）保持横屏窗口不回竖；
@@ -53,10 +58,8 @@ struct VideoPlayer {
     if (!this.playerFullScreen) {
       WindowManager.lockPortrait();
     }
-    // 视频页沉浸式：窗口全屏布局 + 透明系统栏，系统栏显示/隐藏不再引起窗口尺寸跳变
-    WindowManager.setLayoutFullScreen(true, '#00000000', '#ffffff', '#00000000', '#182431');
-    this.statusBarPad = px2vp(WindowManager.getStatusBarAvoidHeight());
-    this.navBarPad = px2vp(WindowManager.getNavBarAvoidHeight());
+    // 视频页沉浸式改为延迟应用（onPageShow + 转场动画时长后）：
+    // aboutToAppear 立即改窗口布局会让底部首页在转场开始前重排（列表跳回顶部）
     // 叠栈计数：仅最后一个视频页销毁时才退出沉浸式，避免上层视频页返回时破坏下层沉浸状态
     let cnt: number = AppStorage.get<number>('videoPageCount') ?? 0;
     AppStorage.setOrCreate('videoPageCount', cnt + 1);
@@ -95,13 +98,44 @@ struct VideoPlayer {
     ApiManager.getInstance()
       .requestReply(this.vInfo.bvid, 0, 1, 0)
       .then((cursor: ReplyCursor) => {
-        this.replyCount = cursor.all_count;
+        // 评论接口失败/被风控时 cursor 为 null，需判空避免未处理异常
+        if (cursor != null) {
+          this.replyCount = cursor.all_count;
+        }
+      })
+      .catch((err: Error) => {
+        BLog.e("requestReply initial failed: " + err);
       });
+  }
+
+  /**
+   * 延迟应用沉浸式布局：等待路由转场动画（约 400ms）结束后再改窗口布局，
+   * 避免转场期间窗口尺寸变化导致下层页面（首页列表）可见跳动；
+   * padding 初始为 0（普通窗口布局下内容本就从状态栏下方开始），
+   * 沉浸式生效后再设为避让高度，视频画面在屏幕上的位置保持不变。
+   */
+  private applyImmersiveLayout() {
+    if (this.immersiveApplied || this.immersiveTimer >= 0) {
+      return;
+    }
+    this.immersiveTimer = setTimeout(() => {
+      this.immersiveTimer = -1;
+      if (this.pageState === "aboutToDisappear") {
+        return;
+      }
+      this.immersiveApplied = true;
+      // 视频页沉浸式：窗口全屏布局 + 透明系统栏，系统栏显示/隐藏不再引起窗口尺寸跳变
+      WindowManager.setLayoutFullScreen(true, '#00000000', '#ffffff', '#00000000', '#182431');
+      this.statusBarPad = px2vp(WindowManager.getStatusBarAvoidHeight());
+      this.navBarPad = px2vp(WindowManager.getNavBarAvoidHeight());
+    }, 450);
   }
 
   onPageShow() {
     this.pageState = "onPageShow";
     AppStorage.SetOrCreate('bvid', this.vInfo.bvid);
+    // 沉浸式延迟到转场动画结束后应用（aboutToAppear 过早，首页会先重排）
+    this.applyImmersiveLayout();
     // 多视频页叠栈时 replyCount 为全局共享键，回到本页时以本页数据恢复，
     // 避免 A 页评论数显示成 B 页的（同时驱动 VideoReply 重建绑定本页弹幕/评论源）
     if (this.vInfo.stat.reply != undefined) {
@@ -145,14 +179,18 @@ struct VideoPlayer {
 
   aboutToDisappear() {
     this.pageState = "aboutToDisappear";
+    // 清理未触发的沉浸式延迟定时器（快速进出页面场景）
+    if (this.immersiveTimer >= 0) {
+      clearTimeout(this.immersiveTimer);
+      this.immersiveTimer = -1;
+    }
     // 叠栈计数：仅最后一个视频页销毁时恢复系统栏与退出沉浸式布局
     let cnt: number = AppStorage.get<number>('videoPageCount') ?? 1;
     AppStorage.setOrCreate('videoPageCount', cnt - 1);
     if (cnt - 1 <= 0) {
       // 离开视频页兜底恢复系统栏与退出沉浸式布局（全屏状态下页面直接销毁的场景）
       WindowManager.setFullScreen(true);
-      WindowManager.setLayoutFullScreen(false, WindowManager.COLOR_WHITE, WindowManager.COLOR_BLACK,
-        WindowManager.COLOR_WHITE, WindowManager.COLOR_BLACK);
+      ThemeUtil.applyThemeBars();
       if (!this.isPortrait) {
         // 窗口仍横屏（绕过 onBackPress 的销毁路径）：旋转回竖屏并同步方向状态
         WindowManager.rotateWindowPortrait();
@@ -179,14 +217,20 @@ struct VideoPlayer {
     Column() {
       Text(this.tabTitle[targetIndex])
         .fontSize(14)
-        .fontColor(this.currentIndex === targetIndex ? '#1698CE' : '#6B6B6B')
+        .fontColor(this.currentIndex === targetIndex ? '#1698CE' : $r('app.color.tab_inactive'))
         .border({ width: { bottom: this.currentIndex === targetIndex ? 2 : 0 }, color: '#1698CE' })
         .height('100%')
     }
     .width('100%')
     .height('100%')
     .justifyContent(FlexAlign.Center)
-    .border({ width: { bottom: 0.5 }, color: '#cccccc' })
+    .border({ width: { bottom: 0.5 }, color: $r('app.color.border') })
+    // 点击即时切换：不等 Tabs 滑动动画结束（onChange 在动画后才回调，导致内容延迟切换）
+    .onClick(() => {
+      if (this.currentIndex !== targetIndex && this.replyItem == null) {
+        this.currentIndex = targetIndex;
+      }
+    })
   }
 
   build() {

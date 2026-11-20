@@ -52,7 +52,7 @@ export struct PopularView {
         customLoad: null,
         customRefresh: null,
       })
-    }.backgroundColor('#ffffff')
+    }.backgroundColor($r('app.color.surface'))
   }
 
   @Builder
@@ -78,10 +78,10 @@ export struct PopularView {
           ListItem() {
             Row() {
               Flex().height(1).layoutWeight(1)
-                .backgroundColor('#ffeeeeee')
+                .backgroundColor($r('app.color.divider'))
               Flex().width(18).height(1)
               Flex().height(1).layoutWeight(1)
-                .backgroundColor('#ffeeeeee')
+                .backgroundColor($r('app.color.divider'))
             }.width('100%')
             .margin({ top: 4, bottom: 4 })
           }
@@ -90,7 +90,7 @@ export struct PopularView {
     }
     .width('100%')
     .padding({ left: 16, right: 16, bottom: 4 })
-    //.divider({ strokeWidth: 1, color: '#ffeeeeee' })
+    //.divider({ strokeWidth: 1, color: $r('app.color.divider') })
     .edgeEffect(EdgeEffect.None)
     .onScrollIndex((start, end) => {
       onListStatus(start == 0,

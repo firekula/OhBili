@@ -13,6 +13,7 @@
 import router from '@ohos.router';
 import util from '@ohos.util';
 import { WindowManager } from '@ohos/common';
+import { ThemeUtil } from '@ohos/common';
 import { ApiManager } from '@ohos/common';
 import { BLog } from '@ohos/common';
 import { LoginHelper } from '@ohos/common';
@@ -32,6 +33,11 @@ struct Splash {
       this.appUuid = util.generateRandomUUID();
     }
     BLog.i("appUuid: " + this.appUuid);
+
+    // 深浅色模式：应用持久化选择（跟随系统/浅色/深色）并刷新状态栏配色
+    let colorMode: string = AppStorage.get<string>('ohBiliColorMode') ?? ThemeUtil.MODE_FOLLOW_SYSTEM;
+    ThemeUtil.applyColorMode(colorMode);
+    ThemeUtil.applyThemeBars();
 
     this.initTask();
     setTimeout(() => {
@@ -53,8 +59,7 @@ struct Splash {
   }
 
   onPageShow() {
-    WindowManager.setLayoutFullScreen(false, WindowManager.COLOR_WHITE,
-      WindowManager.COLOR_BLACK, WindowManager.COLOR_WHITE, WindowManager.COLOR_BLACK);
+    ThemeUtil.applyThemeBars();
   }
 
   build() {
@@ -78,9 +83,14 @@ function storageInit() {
   PersistentStorage.PersistProp('pagePlayOver', '1');
   PersistentStorage.PersistProp('videoQuality', '1080P');
   PersistentStorage.PersistProp('playSpeed', '1.0X');
+  // 播放器内选择的清晰度档位（qn，0=未指定走默认链路），跨启动记忆
+  PersistentStorage.PersistProp('ohBiliPlayQn', 0);
 
   PersistentStorage.PersistProp('appLogDebug', '0');
   PersistentStorage.PersistProp('appUuid', 'undefined');
+
+  // 深浅色模式（'跟随系统' | '浅色' | '深色'）
+  PersistentStorage.PersistProp('ohBiliColorMode', '跟随系统');
 
   // 扫码登录相关持久化键
   PersistentStorage.PersistProp('isOhBiliLoggedIn', false);

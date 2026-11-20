@@ -36,7 +36,7 @@ struct SearchPage {
           .fontSize(14)
           .fontWeight(FontWeight.Bold)
         Blank()
-        Text("完整榜单").fontSize(14).fontColor("#888888").onClick(() => {
+        Text("完整榜单").fontSize(14).fontColor($r('app.color.text_secondary')).onClick(() => {
           router.pushUrl({ url: 'pages/TopSearch', params: { rankings: this.rankings } });
         })
       }.width('100%')

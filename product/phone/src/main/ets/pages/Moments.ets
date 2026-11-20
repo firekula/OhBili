@@ -71,8 +71,8 @@ export struct MomentsView {
       }
 
       if (!this.loginState) {
-        Text("你还未登录").fontSize(16).fontColor(Color.Black).fontWeight(FontWeight.Medium).margin({ top: 48 })
-        Text("登录账号，查看你关注的UP主内容").fontSize(15).fontColor('#888888').margin({ top: 16 })
+        Text("你还未登录").fontSize(16).fontColor($r('app.color.text_primary')).fontWeight(FontWeight.Medium).margin({ top: 48 })
+        Text("登录账号，查看你关注的UP主内容").fontSize(15).fontColor($r('app.color.text_secondary')).margin({ top: 16 })
         Button("登录").width(240).margin({ top: 16 }).onClick(() => {
           router.pushUrl({ url: "pages/Login" })
         })
@@ -85,7 +85,7 @@ export struct MomentsView {
               .height(36)
             Text(this.currentTab == 1 ? "视频动态加载中..." : "动态加载中...")
               .fontSize(14)
-              .fontColor('#888888')
+              .fontColor($r('app.color.text_secondary'))
               .margin({ top: 12 })
           }
           .width('100%')
@@ -94,8 +94,8 @@ export struct MomentsView {
         } else if (this.loginExpired && this.currentSource().totalCount() == 0) {
           // 登录失效：引导重新登录，非死循环加载
           Column() {
-            Text("登录已失效").fontSize(16).fontColor(Color.Black).fontWeight(FontWeight.Medium).margin({ top: 48 })
-            Text("请重新登录后查看动态").fontSize(14).fontColor('#888888').margin({ top: 12 })
+            Text("登录已失效").fontSize(16).fontColor($r('app.color.text_primary')).fontWeight(FontWeight.Medium).margin({ top: 48 })
+            Text("请重新登录后查看动态").fontSize(14).fontColor($r('app.color.text_secondary')).margin({ top: 12 })
             Button("重新登录").width(240).margin({ top: 16 }).onClick(() => {
               router.pushUrl({ url: "pages/Login" })
             })
@@ -106,8 +106,8 @@ export struct MomentsView {
         } else if (this.loadFailed && this.currentSource().totalCount() == 0) {
           // 请求失败错误态，可重试
           Column() {
-            Text("动态加载失败").fontSize(16).fontColor(Color.Black).fontWeight(FontWeight.Medium).margin({ top: 48 })
-            Text("请检查网络后重试").fontSize(14).fontColor('#888888').margin({ top: 12 })
+            Text("动态加载失败").fontSize(16).fontColor($r('app.color.text_primary')).fontWeight(FontWeight.Medium).margin({ top: 48 })
+            Text("请检查网络后重试").fontSize(14).fontColor($r('app.color.text_secondary')).margin({ top: 12 })
             Button("重试").width(240).margin({ top: 16 }).onClick(() => {
               this.loadFirst();
             })
@@ -119,8 +119,8 @@ export struct MomentsView {
           // 空态（如新账号无关注）
           Column() {
             Text(this.currentTab == 1 ? "暂无视频动态" : "暂无动态")
-              .fontSize(16).fontColor(Color.Black).fontWeight(FontWeight.Medium).margin({ top: 48 })
-            Text("去关注喜欢的UP主吧").fontSize(14).fontColor('#888888').margin({ top: 12 })
+              .fontSize(16).fontColor($r('app.color.text_primary')).fontWeight(FontWeight.Medium).margin({ top: 48 })
+            Text("去关注喜欢的UP主吧").fontSize(14).fontColor($r('app.color.text_secondary')).margin({ top: 12 })
           }
           .width('100%')
           .layoutWeight(1)
@@ -165,7 +165,7 @@ export struct MomentsView {
           })
         }
       }
-    }.width('100%').height('100%').backgroundColor('#eeeeee')
+    }.width('100%').height('100%').backgroundColor($r('app.color.page_bg'))
   }
 
   /**
@@ -176,9 +176,9 @@ export struct MomentsView {
     Row({ space: 10 }) {
       Text("全部")
         .fontSize(14)
-        .fontColor(this.currentTab == 0 ? Color.White : '#333333')
+        .fontColor(this.currentTab == 0 ? Color.White : $r('app.color.text_primary'))
         .fontWeight(this.currentTab == 0 ? FontWeight.Medium : FontWeight.Normal)
-        .backgroundColor(this.currentTab == 0 ? '#1698CE' : '#ffffff')
+        .backgroundColor(this.currentTab == 0 ? '#1698CE' : $r('app.color.surface'))
         .borderRadius(14)
         .padding({ left: 16, right: 16, top: 5, bottom: 5 })
         .onClick(() => {
@@ -186,9 +186,9 @@ export struct MomentsView {
         })
       Text("视频")
         .fontSize(14)
-        .fontColor(this.currentTab == 1 ? Color.White : '#333333')
+        .fontColor(this.currentTab == 1 ? Color.White : $r('app.color.text_primary'))
         .fontWeight(this.currentTab == 1 ? FontWeight.Medium : FontWeight.Normal)
-        .backgroundColor(this.currentTab == 1 ? '#1698CE' : '#ffffff')
+        .backgroundColor(this.currentTab == 1 ? '#1698CE' : $r('app.color.surface'))
         .borderRadius(14)
         .padding({ left: 16, right: 16, top: 5, bottom: 5 })
         .onClick(() => {

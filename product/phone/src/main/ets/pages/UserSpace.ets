@@ -66,7 +66,7 @@ struct UserSpace {
             .height(36)
           Text("加载中...")
             .fontSize(14)
-            .fontColor('#888888')
+            .fontColor($r('app.color.text_secondary'))
             .margin({ top: 12 })
         }
         .width('100%')
@@ -75,8 +75,8 @@ struct UserSpace {
       } else if (this.state == LoadState.Error) {
         // 用户不存在或请求失败：错误态可重试，不白屏
         Column() {
-          Text("空间加载失败").fontSize(16).fontColor(Color.Black).fontWeight(FontWeight.Medium)
-          Text("用户不存在或网络异常，请重试").fontSize(14).fontColor('#888888').margin({ top: 12 })
+          Text("空间加载失败").fontSize(16).fontColor($r('app.color.text_primary')).fontWeight(FontWeight.Medium)
+          Text("用户不存在或网络异常，请重试").fontSize(14).fontColor($r('app.color.text_secondary')).margin({ top: 12 })
           Button("重试").width(240).margin({ top: 16 }).onClick(() => {
             this.loadData();
           })
@@ -89,7 +89,7 @@ struct UserSpace {
         if (this.arcFailed && this.arcSource().totalCount() == 0) {
           // 投稿首屏失败：资料头下展示可重试错误区
           Column() {
-            Text("投稿加载失败").fontSize(14).fontColor('#888888')
+            Text("投稿加载失败").fontSize(14).fontColor($r('app.color.text_secondary'))
             Button("重试").width(160).margin({ top: 8 }).onClick(() => {
               this.retryArchives();
             })
@@ -100,7 +100,7 @@ struct UserSpace {
         } else if (this.arcSource().totalCount() == 0) {
           // 无投稿空态
           Column() {
-            Text("暂无投稿").fontSize(14).fontColor('#888888')
+            Text("暂无投稿").fontSize(14).fontColor($r('app.color.text_secondary'))
           }
           .width('100%')
           .layoutWeight(1)
@@ -135,7 +135,7 @@ struct UserSpace {
                 ListItem() {
                   Text("没有更多了")
                     .fontSize(12)
-                    .fontColor('#999999')
+                    .fontColor($r('app.color.text_tertiary'))
                     .margin({ top: 4, bottom: 4 })
                 }
               }
@@ -155,7 +155,7 @@ struct UserSpace {
           .layoutWeight(1)
         }
       }
-    }.width('100%').height('100%').backgroundColor('#eeeeee')
+    }.width('100%').height('100%').backgroundColor($r('app.color.page_bg'))
   }
 
   /**
@@ -174,7 +174,7 @@ struct UserSpace {
         Column() {
           Text(this.profileName())
             .fontSize(18)
-            .fontColor('#333333')
+            .fontColor($r('app.color.text_primary'))
             .fontWeight(FontWeight.Medium)
             .maxLines(1)
           Row() {
@@ -189,7 +189,7 @@ struct UserSpace {
               // 等级未返回时占位
               Text('--')
                 .fontSize(10)
-                .fontColor('#999999')
+                .fontColor($r('app.color.text_tertiary'))
             }
           }.margin({ top: 4 })
         }
@@ -201,7 +201,7 @@ struct UserSpace {
 
       Text(this.profileSign())
         .fontSize(12)
-        .fontColor('#888888')
+        .fontColor($r('app.color.text_secondary'))
         .maxLines(2)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .margin({ top: 8 })
@@ -212,33 +212,33 @@ struct UserSpace {
         Column() {
           Text(StringUtil.generateCN(this.profileFollowing()))
             .fontSize(16)
-            .fontColor('#333333')
+            .fontColor($r('app.color.text_primary'))
             .fontWeight(FontWeight.Medium)
           Text("关注")
             .fontSize(11)
-            .fontColor('#999999')
+            .fontColor($r('app.color.text_tertiary'))
             .margin({ top: 2 })
         }.layoutWeight(1)
 
         Column() {
           Text(StringUtil.generateCN(this.profileFollower()))
             .fontSize(16)
-            .fontColor('#333333')
+            .fontColor($r('app.color.text_primary'))
             .fontWeight(FontWeight.Medium)
           Text("粉丝")
             .fontSize(11)
-            .fontColor('#999999')
+            .fontColor($r('app.color.text_tertiary'))
             .margin({ top: 2 })
         }.layoutWeight(1)
 
         Column() {
           Text(StringUtil.generateCN(this.profileLikeNum()))
             .fontSize(16)
-            .fontColor('#333333')
+            .fontColor($r('app.color.text_primary'))
             .fontWeight(FontWeight.Medium)
           Text("获赞")
             .fontSize(11)
-            .fontColor('#999999')
+            .fontColor($r('app.color.text_tertiary'))
             .margin({ top: 2 })
         }.layoutWeight(1)
       }
@@ -247,7 +247,7 @@ struct UserSpace {
     }
     .width('100%')
     .padding(16)
-    .backgroundColor(Color.White)
+    .backgroundColor($r('app.color.surface'))
   }
 
   /**

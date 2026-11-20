@@ -52,7 +52,7 @@ export struct PopularView {
         customLoad: null,
         customRefresh: null,
       })
-    }.backgroundColor('#ffffff')
+    }.backgroundColor($r('app.color.surface'))
   }
 
   @Builder
@@ -66,7 +66,7 @@ export struct PopularView {
     }
     .width('100%')
     .padding({ left: 16, right: 16, bottom: 4 })
-    .divider({ strokeWidth: 1, color: '#ffeeeeee' })
+    .divider({ strokeWidth: 1, color: $r('app.color.divider') })
     .edgeEffect(EdgeEffect.None)
     .onScrollIndex((start, end) => {
       onListStatus(start == 0,

@@ -256,9 +256,9 @@ struct Login {
           Column() {
             if (this.pageState === STATE_LOADING) {
               LoadingProgress().width(48).height(48)
-              Text('二维码生成中...').fontSize(14).fontColor('#888888').margin({ top: 12 })
+              Text('二维码生成中...').fontSize(14).fontColor($r('app.color.text_secondary')).margin({ top: 12 })
             } else {
-              Text('二维码加载失败').fontSize(15).fontColor('#888888')
+              Text('二维码加载失败').fontSize(15).fontColor($r('app.color.text_secondary'))
               Button('点击重试')
                 .margin({ top: 16 })
                 .onClick(() => {
@@ -299,7 +299,7 @@ struct Login {
                   .fontWeight(FontWeight.Medium)
                 Text('点击刷新')
                   .fontSize(14)
-                  .fontColor('#666666')
+                  .fontColor($r('app.color.text_mid'))
                   .margin({ top: 8 })
               }
               .width(QR_CARD_SIZE)
@@ -316,7 +316,7 @@ struct Login {
 
         Text(this.statusText)
           .fontSize(14)
-          .fontColor('#666666')
+          .fontColor($r('app.color.text_mid'))
           .margin({ top: 16 })
       }
       .layoutWeight(1)

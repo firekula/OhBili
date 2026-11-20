@@ -52,6 +52,7 @@ import { SpaceAccInfoResponse } from '../model/response/SpaceAccInfoResponse';
 import { SpaceArcSearchResponse } from '../model/response/SpaceArcSearchResponse';
 import { SeriesArchivesResponse } from '../model/response/SeriesArchivesResponse';
 import { HistoryResponse } from '../model/response/HistoryResponse';
+import { RelationStatResponse } from '../model/response/RelationStatResponse';
 import { FavFolderResponse } from '../model/response/FavFolderResponse';
 import { FavResourceResponse } from '../model/response/FavResourceResponse';
 import { WatchLaterResponse } from '../model/response/WatchLaterResponse';
@@ -125,6 +126,8 @@ export class DataService extends BaseService {
 
   /**
    * 获取视频评论
+   * 风控规避：匿名请求易触发 -412/-352（连刷后全站评论失效），对齐网页版请求头并携带 Cookie
+   * @param @Header('Cookie') cookie Cookie 请求头
    * @param @Query('oid') oid bvid视频id
    * * @param @Query('ps') ps 每页项数
    * @param @Query('pn') pn 页码
@@ -132,7 +135,9 @@ export class DataService extends BaseService {
    * @param @Query('sort') sort 排序
    */
   @GET("x/v2/reply/main")
-  async getReply(@Query('oid') oid: string,
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async getReply(@Header('Cookie') cookie: string,
+                 @Query('oid') oid: string,
                  @Query('ps') ps: number,
                  @Query('next') next: number,
                  @Query('type') type: number,
@@ -141,14 +146,59 @@ export class DataService extends BaseService {
     return <Response<ReplyResponse>> {}
   };
 
+  /**
+   * 获取评论的子回复列表
+   * 风控规避：同 getReply，对齐网页版请求头并携带 Cookie
+   */
   @GET("x/v2/reply/reply")
-  async getReplyDetail(@Query('oid') oid: string,
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async getReplyDetail(@Header('Cookie') cookie: string,
+                       @Query('oid') oid: string,
                        @Query('root') root: number,
                        @Query('ps') ps: number,
                        @Query('pn') pn: number,
                        @Query('type') type: number):
     Promise<Response<ReplyDetailResponse>> {
     return <Response<ReplyDetailResponse>> {}
+  };
+
+  /**
+   * 评论点赞/点踩（POST，csrf 鉴权）
+   * @param oid 视频 aid
+   * @param rpid 评论 rpid
+   * @param action 1=点赞 2=点踩（重复同值=取消）
+   */
+  @POST("x/v2/reply/action")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async replyAction(@Header('Cookie') cookie: string,
+                    @Query('oid') oid: number,
+                    @Query('type') type: number,
+                    @Query('rpid') rpid: number,
+                    @Query('action') action: number,
+                    @Query('csrf') csrf: string):
+    Promise<Response<EmptyResponse>> {
+    return <Response<EmptyResponse>> {}
+  };
+
+  /**
+   * 发表评论/回复（POST，csrf 鉴权）
+   * @param oid 视频 aid
+   * @param root 根评论 rpid（0=顶级评论）
+   * @param parent 父评论 rpid（0=顶级评论；回复楼中楼时=root 或被回复者 rpid）
+   * @param message 评论内容
+   */
+  @POST("x/v2/reply/add")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async replyAdd(@Header('Cookie') cookie: string,
+                 @Query('oid') oid: number,
+                 @Query('type') type: number,
+                 @Query('root') root: number,
+                 @Query('parent') parent: number,
+                 @Query('message') message: string,
+                 @Query('plat') plat: number,
+                 @Query('csrf') csrf: string):
+    Promise<Response<EmptyResponse>> {
+    return <Response<EmptyResponse>> {}
   };
 
   /**
@@ -418,6 +468,17 @@ export class DataService extends BaseService {
                           @Query('wts') wts: string):
     Promise<Response<SpaceArcSearchResponse>> {
     return <Response<SpaceArcSearchResponse>>{};
+  }
+
+  /**
+   * 获取用户关注/粉丝数（公开接口，无需 WBI 签名与登录）
+   * @param vmid 用户 mid
+   */
+  @GET("x/relation/stat")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': 'https://space.bilibili.com' })
+  async getRelationStat(@Query('vmid') vmid: number):
+    Promise<Response<RelationStatResponse>> {
+    return <Response<RelationStatResponse>>{};
   }
 
   /**

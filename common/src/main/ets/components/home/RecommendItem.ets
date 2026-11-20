@@ -60,7 +60,7 @@ export struct RecommendItemView {
 
       Text(this.item.title)
         .fontSize(14)
-        .fontColor('#333333')
+        .fontColor($r('app.color.text_primary'))
         .fontWeight(FontWeight.Regular)
         .height(48)
         .width('100%')
@@ -76,7 +76,7 @@ export struct RecommendItemView {
         Text(this.item.owner.name)
           .maxLines(1)
           .fontSize(12)
-          .fontColor('#aaaaaa')
+          .fontColor($r('app.color.text_faint'))
           .height(30)
           .width('100%')
       }
@@ -85,7 +85,7 @@ export struct RecommendItemView {
       router.pushUrl({ url: 'pages/Video', params: { vInfo: this.item } });
     })
     .borderRadius(4)
-    .backgroundColor('#ffffff')
+    .backgroundColor($r('app.color.surface'))
     .shadow({radius: 3, color: "#ff6d6d6d"})
   }
 

@@ -26,7 +26,7 @@ export struct DynamicTextView {
       Column() {
         Text(this.text)
           .fontSize(14)
-          .fontColor('#333333')
+          .fontColor($r('app.color.text_primary'))
           .width('100%')
           .textAlign(TextAlign.Start)
           .lineHeight(20)

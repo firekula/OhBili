@@ -42,7 +42,7 @@ export struct UserHeadView {
       {
         Text($r('app.string.click_login'))
           .fontSize(18)
-          .fontColor('#333333')
+          .fontColor($r('app.color.text_primary'))
           .fontWeight(FontWeight.Medium)
           .maxLines(1)
       }
@@ -50,7 +50,7 @@ export struct UserHeadView {
       {
         Text(this.uname)
           .fontSize(18)
-          .fontColor('#333333')
+          .fontColor($r('app.color.text_primary'))
           .fontWeight(FontWeight.Medium)
           .maxLines(1)
       }
@@ -59,7 +59,7 @@ export struct UserHeadView {
         // 登录成功但昵称尚未从导航接口返回时的短暂兜底文案
         Text($r('app.string.logged_in'))
           .fontSize(18)
-          .fontColor('#333333')
+          .fontColor($r('app.color.text_primary'))
           .fontWeight(FontWeight.Medium)
           .maxLines(1)
       }

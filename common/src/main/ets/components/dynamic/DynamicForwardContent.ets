@@ -42,7 +42,7 @@ export struct DynamicForwardContent {
           // 原动态已删除/失效
           Text("原动态已失效")
             .fontSize(13)
-            .fontColor('#999999')
+            .fontColor($r('app.color.text_tertiary'))
             .width('100%')
             .textAlign(TextAlign.Start)
         } else {
@@ -59,7 +59,7 @@ export struct DynamicForwardContent {
                 })
               Text(this.origAuthor.name ?? '')
                 .fontSize(12)
-                .fontColor('#666666')
+                .fontColor($r('app.color.text_mid'))
                 .maxLines(1)
                 .margin({ left: 6 })
                 .layoutWeight(1)
@@ -77,7 +77,7 @@ export struct DynamicForwardContent {
       .width('100%')
       .padding(8)
       .borderRadius(6)
-      .backgroundColor('#f6f6f6')
+      .backgroundColor($r('app.color.surface_soft'))
       .alignItems(HorizontalAlign.Start)
     }
     .width('100%')
@@ -120,7 +120,7 @@ export struct DynamicForwardContent {
     } else {
       Text("原动态已失效")
         .fontSize(13)
-        .fontColor('#999999')
+        .fontColor($r('app.color.text_tertiary'))
         .width('100%')
         .textAlign(TextAlign.Start)
     }

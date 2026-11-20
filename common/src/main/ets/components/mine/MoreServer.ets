@@ -17,7 +17,7 @@ export struct MoreServerView {
     Column() {
       Text($r('app.string.more_service'))
         .fontSize(18)
-        .fontColor('#333333')
+        .fontColor($r('app.color.text_primary'))
         .fontWeight(FontWeight.Medium).margin({ left: 16, top: 24, right: 16, bottom: 24 })
 
       Row() {
@@ -26,7 +26,7 @@ export struct MoreServerView {
           .height(24)
         Text($r('app.string.setting'))
           .fontSize(16)
-          .fontColor('#333333')
+          .fontColor($r('app.color.text_primary'))
           .margin({ left: 16 })
         Blank()
         Image($r('app.media.ic_arrow_right'))
@@ -45,7 +45,7 @@ export struct MoreServerView {
           .height(24)
         Text($r('app.string.problem_feedback'))
           .fontSize(16)
-          .fontColor('#333333')
+          .fontColor($r('app.color.text_primary'))
           .margin({ left: 16 })
         Blank()
         Image($r('app.media.ic_arrow_right'))
@@ -64,7 +64,7 @@ export struct MoreServerView {
           .height(24)
         Text($r('app.string.about'))
           .fontSize(16)
-          .fontColor('#333333')
+          .fontColor($r('app.color.text_primary'))
           .margin({ left: 16 })
         Blank()
         Image($r('app.media.ic_arrow_right'))

@@ -36,6 +36,11 @@ export class AvPlayer extends IPlayer {
     /** 本实例的 playId（原为空实现导致上层 bvid==getPlayId() 恒 false，离开页面从不停止播放） */
     private playId: string = "";
     private updateProgressTimer: number = -1;
+    /** 清晰度切换中：reset→idle 时不 release，改设新数据源 */
+    private isSwitchingSource: boolean = false;
+    /** 待切换的数据源（reset→idle 回调后应用） */
+    private pendingSourceUrl: string = "";
+    private pendingSourceHeaders: Map<string, string> | null = null;
 
     public initPlay(context: object): Promise<void> {
         this.xController.setXComponentSurfaceSize({surfaceWidth:1920,surfaceHeight:1080});
@@ -74,12 +79,38 @@ export class AvPlayer extends IPlayer {
             return;
         }
         this.isSeek = false;
+        this.applySource(url, headers);
+    }
+
+    /**
+     * 播放中切换数据源（清晰度切换）：复用播放器实例，
+     * reset 回到 idle 后设新源重新 prepare，由上层在 prepared 后 seek 续播。
+     */
+    public switchSource(url: string, headers?: Map<string, string>): void {
+        if (this.isReleased || !this.avPlayer) {
+            return;
+        }
+        let state: string = this.avPlayer.state;
+        if (state === 'idle') {
+            this.isSeek = false;
+            this.applySource(url, headers);
+            return;
+        }
+        this.pendingSourceUrl = url;
+        this.pendingSourceHeaders = headers ?? null;
+        this.isSwitchingSource = true;
+        this.stopProgressTask();
+        this.avPlayer.reset();
+    }
+
+    /** 实际设置数据源（本地 fdSrc / 带头 MediaSource / 直连 url） */
+    private applySource(url: string, headers?: Map<string, string>): void {
         if (url.startsWith('/')) {
             // 本地文件：fs.open 取 fd 走 fdSrc 播放（AVPlayer.url 不支持沙箱绝对路径）
             this.openLocalFile(url);
             return;
         }
-        if (headers !== undefined && headers.size > 0) {
+        if (headers !== undefined && headers !== null && headers.size > 0) {
             // 系统播放器默认 HTTP 请求不携带自定义头，B站 CDN 校验 User-Agent/Referer，
             // 直接赋值 url 会得到 403（content-type: text/html 错误页 → 5400106）。
             // 须通过 MediaSource 携带自定义请求头（API 12+）。
@@ -203,6 +234,58 @@ export class AvPlayer extends IPlayer {
         return this.avPlayer.duration;
     }
 
+    public getCurrentTime(): number {
+        if (this.isReleased || !this.avPlayer) {
+            return 0;
+        }
+        let state: string = this.avPlayer.state;
+        if (state === 'idle' || state === 'initialized' || state === 'released') {
+            return 0;
+        }
+        let time: number = this.avPlayer.currentTime;
+        return time > 0 ? time : 0;
+    }
+
+    public setSpeed(speed: number): void {
+        if (this.isReleased || !this.avPlayer) {
+            return;
+        }
+        let state: string = this.avPlayer.state;
+        if (state !== 'prepared' && state !== 'playing' && state !== 'paused' && state !== 'completed') {
+            // 未就绪：由上层在 prepared 后重新下发
+            return;
+        }
+        // AVPlayer 仅支持 0.75/1.0/1.25/1.75/2.0 五档，就近吸附
+        let playbackSpeed: media.PlaybackSpeed = media.PlaybackSpeed.SPEED_FORWARD_1_00_X;
+        if (speed < 0.875) {
+            playbackSpeed = media.PlaybackSpeed.SPEED_FORWARD_0_75_X;
+        } else if (speed < 1.125) {
+            playbackSpeed = media.PlaybackSpeed.SPEED_FORWARD_1_00_X;
+        } else if (speed < 1.5) {
+            playbackSpeed = media.PlaybackSpeed.SPEED_FORWARD_1_25_X;
+        } else if (speed < 1.875) {
+            playbackSpeed = media.PlaybackSpeed.SPEED_FORWARD_1_75_X;
+        } else {
+            playbackSpeed = media.PlaybackSpeed.SPEED_FORWARD_2_00_X;
+        }
+        try {
+            this.avPlayer.speed = playbackSpeed;
+        } catch (error) {
+            console.warn(`AvPlayer setSpeed failed: ${JSON.stringify(error)}`);
+        }
+    }
+
+    public setLoop(loop: boolean): void {
+        if (this.isReleased || !this.avPlayer) {
+            return;
+        }
+        try {
+            this.avPlayer.loop = loop;
+        } catch (error) {
+            console.warn(`AvPlayer setLoop failed: ${JSON.stringify(error)}`);
+        }
+    }
+
     public setPlayId(playId: string) {
         this.playId = playId;
     }
@@ -236,6 +319,15 @@ export class AvPlayer extends IPlayer {
             switch (state) {
                 case 'idle': // 成功调用reset接口后触发该状态机上报
                     console.info('AVPlayer state idle called.');
+                    if (this.isSwitchingSource) {
+                        // 清晰度切换：复用实例重设数据源，不销毁
+                        this.isSwitchingSource = false;
+                        this.isSeek = false;
+                        this.applySource(this.pendingSourceUrl, this.pendingSourceHeaders ?? undefined);
+                        this.pendingSourceUrl = '';
+                        this.pendingSourceHeaders = null;
+                        break;
+                    }
                     this.avPlayer.release(); // 调用release接口销毁实例对象
                     break;
                 case 'initialized': // avplayer 设置播放源后触发该状态上报

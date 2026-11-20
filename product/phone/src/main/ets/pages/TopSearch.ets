@@ -41,7 +41,7 @@ struct TopSearchPage {
       }.margin({ top: 12, bottom: 24 })
 
       Flex().width('100%').height(1)
-        .backgroundColor('#ffeeeeee')
+        .backgroundColor($r('app.color.divider'))
       List() {
         ForEach(this.rankings, (item: RankingItem) => {
           ListItem() {
@@ -74,7 +74,7 @@ struct TopSearchPage {
       }
       .width('100%')
       .padding({ left: 20, right: 20 })
-      .divider(({ strokeWidth: 1, color: '#ffeeeeee' }))
+      .divider(({ strokeWidth: 1, color: $r('app.color.divider') }))
       .layoutWeight(1)
     }.height('100%')
   }

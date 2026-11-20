@@ -1,7 +1,9 @@
 import UIAbility from '@ohos.app.ability.UIAbility';
 import hilog from '@ohos.hilog';
 import window from '@ohos.window';
+import { Configuration } from '@kit.AbilityKit';
 import { WindowManager } from '@ohos/common';
+import { ThemeUtil } from '@ohos/common';
 import { ImageKnife, ImageKnifeDrawFactory } from '@ohos/imageknife'
 import { CustomEngineKeyImpl } from './CustomEngineKeyImpl';
 import { BLog } from '@ohos/common';
@@ -35,8 +37,7 @@ export default class TabletAbility extends UIAbility {
     this.netConnRegister();
     this.getAppBundleInfo();
 
-    WindowManager.setLayoutFullScreen(false, WindowManager.COLOR_WHITE,
-      WindowManager.COLOR_BLACK, WindowManager.COLOR_WHITE, WindowManager.COLOR_BLACK);
+    ThemeUtil.applyThemeBars();
 
     windowStage.loadContent('pages/Splash', (err, data) => {
       if (err.code) {
@@ -50,6 +51,11 @@ export default class TabletAbility extends UIAbility {
   onWindowStageDestroy() {
     // Main window is destroyed, release UI related resources
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onWindowStageDestroy');
+  }
+
+  onConfigurationUpdate(newConfig: Configuration): void {
+    // 跟随系统时，系统深浅色切换后刷新状态栏配色（页面颜色资源随配置自动切换）
+    ThemeUtil.applyThemeBars();
   }
 
   onForeground() {

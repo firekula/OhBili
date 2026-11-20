@@ -63,8 +63,8 @@ struct History {
       if (!this.loginState) {
         // 未登录：页内登录引导，不发起历史请求
         Column() {
-          Text("你还未登录").fontSize(16).fontColor(Color.Black).fontWeight(FontWeight.Medium).margin({ top: 48 })
-          Text("登录账号，查看你的历史记录").fontSize(15).fontColor('#888888').margin({ top: 16 })
+          Text("你还未登录").fontSize(16).fontColor($r('app.color.text_primary')).fontWeight(FontWeight.Medium).margin({ top: 48 })
+          Text("登录账号，查看你的历史记录").fontSize(15).fontColor($r('app.color.text_secondary')).margin({ top: 16 })
           Button("登录").width(240).margin({ top: 16 }).onClick(() => {
             router.pushUrl({ url: "pages/Login" })
           })
@@ -79,7 +79,7 @@ struct History {
             .height(36)
           Text("加载中...")
             .fontSize(14)
-            .fontColor('#888888')
+            .fontColor($r('app.color.text_secondary'))
             .margin({ top: 12 })
         }
         .width('100%')
@@ -87,8 +87,8 @@ struct History {
         .justifyContent(FlexAlign.Center)
       } else if (this.state == LoadState.Error) {
         Column() {
-          Text("历史记录加载失败").fontSize(16).fontColor(Color.Black).fontWeight(FontWeight.Medium)
-          Text("登录已失效或网络异常，请重试").fontSize(14).fontColor('#888888').margin({ top: 12 })
+          Text("历史记录加载失败").fontSize(16).fontColor($r('app.color.text_primary')).fontWeight(FontWeight.Medium)
+          Text("登录已失效或网络异常，请重试").fontSize(14).fontColor($r('app.color.text_secondary')).margin({ top: 12 })
           Button("重试").width(240).margin({ top: 16 }).onClick(() => {
             this.loadFirst();
           })
@@ -99,8 +99,8 @@ struct History {
       } else if (this.source().totalCount() == 0) {
         // 空态（无历史或已清空）
         Column() {
-          Text("暂无历史记录").fontSize(16).fontColor(Color.Black).fontWeight(FontWeight.Medium).margin({ top: 48 })
-          Text("快去看点视频吧").fontSize(14).fontColor('#888888').margin({ top: 12 })
+          Text("暂无历史记录").fontSize(16).fontColor($r('app.color.text_primary')).fontWeight(FontWeight.Medium).margin({ top: 48 })
+          Text("快去看点视频吧").fontSize(14).fontColor($r('app.color.text_secondary')).margin({ top: 12 })
         }
         .width('100%')
         .layoutWeight(1)
@@ -117,7 +117,7 @@ struct History {
               ListItem() {
                 Text("没有更多了")
                   .fontSize(12)
-                  .fontColor('#999999')
+                  .fontColor($r('app.color.text_tertiary'))
                   .margin({ top: 4, bottom: 4 })
               }
             }
@@ -136,7 +136,7 @@ struct History {
         .width('100%')
         .layoutWeight(1)
       }
-    }.width('100%').height('100%').backgroundColor('#eeeeee')
+    }.width('100%').height('100%').backgroundColor($r('app.color.page_bg'))
   }
 
   /**
@@ -155,7 +155,7 @@ struct History {
         })
       Text("历史记录")
         .fontSize(16)
-        .fontColor(Color.Black)
+        .fontColor($r('app.color.text_primary'))
         .fontWeight(FontWeight.Medium)
         .padding({ left: 12, right: 12 })
       Blank()
@@ -171,8 +171,8 @@ struct History {
     }
     .width('100%')
     .height(48)
-    .border({ width: { bottom: 0.5 }, color: '#cccccc' })
-    .backgroundColor(Color.White)
+    .border({ width: { bottom: 0.5 }, color: $r('app.color.border') })
+    .backgroundColor($r('app.color.surface'))
   }
 
   /**
@@ -216,19 +216,19 @@ struct History {
       Column() {
         Text(item.title ?? '')
           .fontSize(14)
-          .fontColor(isPlayableHistoryItem(item) ? '#333333' : '#999999')
+          .fontColor(isPlayableHistoryItem(item) ? $r('app.color.text_primary') : $r('app.color.text_tertiary'))
           .maxLines(2)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .textAlign(TextAlign.Start)
         Blank()
         Text(item.author_name ?? '')
           .fontSize(12)
-          .fontColor('#888888')
+          .fontColor($r('app.color.text_secondary'))
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
         Text(this.viewTimeText(item))
           .fontSize(11)
-          .fontColor('#999999')
+          .fontColor($r('app.color.text_tertiary'))
           .margin({ top: 4 })
       }
       .layoutWeight(1)
@@ -239,7 +239,7 @@ struct History {
       if (isPlayableHistoryItem(item)) {
         Text("删除")
           .fontSize(12)
-          .fontColor('#999999')
+          .fontColor($r('app.color.text_tertiary'))
           .padding({ left: 8, right: 4, top: 8, bottom: 8 })
           .onClick(() => {
             this.confirmDelete(item, index);
@@ -249,7 +249,7 @@ struct History {
     .width('100%')
     .padding(10)
     .borderRadius(8)
-    .backgroundColor(Color.White)
+    .backgroundColor($r('app.color.surface'))
     .alignItems(VerticalAlign.Center)
     .onClick(() => {
       this.onItemClick(item);

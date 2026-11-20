@@ -73,7 +73,7 @@ export struct VideoInfoView {
                   .fontWeight(FontWeight.Medium)
               } else {
                 Span(item.text).fontSize(16)
-                  .fontColor('#333333')
+                  .fontColor($r('app.color.text_primary'))
                   .fontWeight(FontWeight.Medium)
               }
             },
@@ -103,18 +103,18 @@ export struct VideoInfoView {
           .height(16)
         Text(StringUtil.generateCN(this.vInfo.stat.view))
           .fontSize(11)
-          .fontColor("#888888")
+          .fontColor($r('app.color.text_secondary'))
           .margin({ left: 4, right: 8 })
         Image($r('app.media.ic_danmakus'))
           .width(16)
           .height(16)
         Text(StringUtil.generateCN(this.vInfo.stat.danmaku))
           .fontSize(11)
-          .fontColor("#888888")
+          .fontColor($r('app.color.text_secondary'))
           .margin({ left: 4, right: 8 })
         Text(StringUtil.dateFormat(new Date(this.vInfo.pubdate * 1000), "yyyy年MM月dd日 HH:mm"))
           .fontSize(11)
-          .fontColor("#888888")
+          .fontColor($r('app.color.text_secondary'))
       }.width('100%').justifyContent(FlexAlign.Start)
 
       if (this.isShowMore) {
@@ -122,13 +122,13 @@ export struct VideoInfoView {
           Row() {
             Text(this.vInfo.bvid)
               .fontSize(11)
-              .fontColor("#888888")
+              .fontColor($r('app.color.text_secondary'))
           }.width('100%').justifyContent(FlexAlign.Start)
           .padding({ top: 8 })
 
           Text(this.vInfo.desc)
             .fontSize(11)
-            .fontColor("#888888")
+            .fontColor($r('app.color.text_secondary'))
             .padding({ top: 8 })
         }
       }

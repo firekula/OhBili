@@ -270,6 +270,26 @@ export class IjkPlayer extends IPlayer {
     return mIjkMediaPlayer.getDuration();
   }
 
+  public getCurrentTime(): number {
+    if (this.isReleased) {
+      return 0;
+    }
+    return 0;
+  }
+
+  public setSpeed(speed: number): void {
+    // IjkPlayer 已弃用（见 Player.ets 说明），保持空实现
+  }
+
+  public setLoop(loop: boolean): void {
+    // IjkPlayer 已弃用（见 Player.ets 说明），保持空实现
+  }
+
+  public switchSource(url: string, headers?: Map<string, string>): void {
+    // IjkPlayer 已弃用（见 Player.ets 说明）：退化成重设数据源（不支持续播位置保持）
+    this.setDataSource(url, headers);
+  }
+
   public setPlayId(playId: string) {
     mIjkMediaPlayer.setPlayId(playId);
   }

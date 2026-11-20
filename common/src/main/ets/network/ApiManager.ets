@@ -44,6 +44,7 @@ import { HistoryItem, HistoryResult } from '../model/response/HistoryResponse';
 import { FavFolderData } from '../model/response/FavFolderResponse';
 import { FavMedia, FavResourceResult } from '../model/response/FavResourceResponse';
 import { WatchLaterResult } from '../model/response/WatchLaterResponse';
+import { RelationStatData } from '../model/response/RelationStatResponse';
 
 export class ApiManager {
   /** 最近一次搜索请求是否被风控（-412 等），供搜索结果页区分"无结果"与"请求过于频繁" */
@@ -163,7 +164,9 @@ export class ApiManager {
   async requestReply(oid: string, next: number,
                       type: number, sort: number): Promise<ReplyCursor> {
     BLog.d(`requestReply oid: ${oid}, next: ${next}, type: ${type}, sort: ${sort}`);
-    var response = await TaskManager.getInstance().requestReply(oid, ApiConstants.itemNum, next, type, sort);
+    // 评论接口风控规避：对齐网页版请求头并携带完整 Cookie（匿名连刷会触发 -412/-352 全站失效）
+    let cookie: string = LoginHelper.buildCookieHeader();
+    var response = await TaskManager.getInstance().requestReply(cookie, oid, ApiConstants.itemNum, next, type, sort);
     if (response.code == -1 ) {
       BLog.e("requestReply err=" + response.message);
     }
@@ -182,7 +185,8 @@ export class ApiManager {
   async requestReplyDetail(oid: string, root: number, pn: number,
                       type: number): Promise<ReplyPage> {
     BLog.d(`requestReplyDetail oid: ${oid}, root: ${root}, pn: ${pn}, type: ${type}`);
-    var response = await TaskManager.getInstance().requestReplyDetail(oid, root, ApiConstants.itemNum, pn, type);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    var response = await TaskManager.getInstance().requestReplyDetail(cookie, oid, root, ApiConstants.itemNum, pn, type);
     if (response.code == -1 ) {
       BLog.e("requestReplyDetail err=" + response.message);
     }
@@ -192,6 +196,43 @@ export class ApiManager {
       return response.result.data.page;
     }
     return null;
+  }
+
+  /**
+   * 评论点赞/点踩（csrf 鉴权）：action 1=点赞 2=点踩，重复同值=取消
+   * @param oid 视频 aid
+   */
+  async requestReplyAction(oid: number, rpid: number, action: number): Promise<boolean> {
+    BLog.d("requestReplyAction oid=" + oid + ", rpid=" + rpid + ", action=" + action);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    let csrf: string = ApiManager.getCsrf();
+    let response = await TaskManager.getInstance().requestReplyAction(cookie, oid, 1, rpid, action, csrf);
+    if (response.code == -1 || response.result == null || response.result.code != 0) {
+      BLog.e("requestReplyAction failed, code=" + response.code
+        + ", bizCode=" + (response.result == null ? -1 : response.result.code)
+        + ", msg=" + response.message);
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * 发表评论/回复（csrf 鉴权）：root=0 为顶级评论，否则为楼中楼回复
+   * @param oid 视频 aid
+   */
+  async requestReplyAdd(oid: number, root: number, parent: number, message: string): Promise<boolean> {
+    BLog.d("requestReplyAdd oid=" + oid + ", root=" + root + ", parent=" + parent
+      + ", msgLen=" + message.length);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    let csrf: string = ApiManager.getCsrf();
+    let response = await TaskManager.getInstance().requestReplyAdd(cookie, oid, 1, root, parent, message, csrf);
+    if (response.code == -1 || response.result == null || response.result.code != 0) {
+      BLog.e("requestReplyAdd failed, code=" + response.code
+        + ", bizCode=" + (response.result == null ? -1 : response.result.code)
+        + ", msg=" + response.message);
+      return false;
+    }
+    return true;
   }
 
   async requestDmList(oid: number, type: number, index: number): Promise<ProtoSource> {
@@ -935,5 +976,25 @@ export class ApiManager {
       return false;
     }
     return true;
+  }
+
+  /**
+   * 获取用户关注/粉丝数（x/relation/stat 公开接口）；
+   * 供"我的"页统计栏展示，失败返回 null 由调用方保持占位
+   */
+  async requestRelationStat(vmid: number): Promise<RelationStatData | null> {
+    BLog.d("requestRelationStat vmid=" + vmid);
+    let response = await TaskManager.getInstance().requestRelationStat(vmid);
+    if (response.code == -1) {
+      BLog.e("requestRelationStat err=" + response.message);
+      return null;
+    }
+    if (response.result == null || response.result.code != 0
+      || response.result.data == null) {
+      BLog.e("requestRelationStat biz err, code="
+        + (response.result == null ? -1 : response.result.code));
+      return null;
+    }
+    return response.result.data;
   }
 }

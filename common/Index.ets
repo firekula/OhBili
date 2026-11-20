@@ -5,6 +5,7 @@ export { WbiSigner } from './src/main/ets/utils/WbiSigner'
 export { ResUtils } from './src/main/ets/utils/ResUtils'
 export { StringUtil, RichString, RichStringType } from './src/main/ets/utils/StringUtil'
 export { WindowManager } from './src/main/ets/utils/WindowManager'
+export { ThemeUtil } from './src/main/ets/utils/ThemeUtil'
 
 export { DanmakuItem } from './src/main/ets/model/proto/DanmakuItem'
 export { DanmakuParser } from './src/main/ets/model/proto/DanmakuParser'
@@ -80,6 +81,7 @@ export { DynamicVideoCard } from './src/main/ets/components/dynamic/DynamicVideo
 
 export { ReplyDetailView } from './src/main/ets/components/video/ReplyDetail'
 export { ReplyItemView } from './src/main/ets/components/video/ReplyItem'
+export { ReplyTextView, ReplyTextParser } from './src/main/ets/components/video/ReplyTextView'
 export { VideoOverview } from './src/main/ets/components/video/VideoOverview'
 export { VideoInfoView } from './src/main/ets/components/video/VideoRelated'
 export { VideoReply } from './src/main/ets/components/video/VideoReply'

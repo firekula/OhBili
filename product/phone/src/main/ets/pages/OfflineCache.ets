@@ -58,11 +58,11 @@ struct OfflineCache {
       Row() {
         Text("已缓存 " + this.tasks.length + " 个视频")
           .fontSize(13)
-          .fontColor('#666666')
+          .fontColor($r('app.color.text_mid'))
         Blank()
         Text("占用 " + this.formatBytes(this.totalSize))
           .fontSize(13)
-          .fontColor('#666666')
+          .fontColor($r('app.color.text_mid'))
       }
       .width('100%')
       .padding({ left: 16, right: 16, top: 10, bottom: 10 })
@@ -70,8 +70,8 @@ struct OfflineCache {
       if (this.tasks.length == 0) {
         // 空态
         Column() {
-          Text("还没有缓存内容").fontSize(16).fontColor(Color.Black).fontWeight(FontWeight.Medium).margin({ top: 48 })
-          Text("在视频页点\"缓存\"，离线也能看").fontSize(14).fontColor('#888888').margin({ top: 12 })
+          Text("还没有缓存内容").fontSize(16).fontColor($r('app.color.text_primary')).fontWeight(FontWeight.Medium).margin({ top: 48 })
+          Text("在视频页点\"缓存\"，离线也能看").fontSize(14).fontColor($r('app.color.text_secondary')).margin({ top: 12 })
         }
         .width('100%')
         .layoutWeight(1)
@@ -89,7 +89,7 @@ struct OfflineCache {
         .padding({ left: 12, right: 12, bottom: 8 })
         .edgeEffect(EdgeEffect.None)
       }
-    }.width('100%').height('100%').backgroundColor('#eeeeee')
+    }.width('100%').height('100%').backgroundColor($r('app.color.page_bg'))
   }
 
   /**
@@ -108,19 +108,19 @@ struct OfflineCache {
       Column() {
         Text(task.title)
           .fontSize(14)
-          .fontColor('#333333')
+          .fontColor($r('app.color.text_primary'))
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .textAlign(TextAlign.Start)
         Text(task.upName)
           .fontSize(11)
-          .fontColor('#888888')
+          .fontColor($r('app.color.text_secondary'))
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .margin({ top: 3 })
         Text(task.qualityDesc)
           .fontSize(11)
-          .fontColor('#999999')
+          .fontColor($r('app.color.text_tertiary'))
           .margin({ top: 2 })
 
         if (task.status == CacheTaskStatus.WAITING || task.status == CacheTaskStatus.DOWNLOADING) {
@@ -131,7 +131,7 @@ struct OfflineCache {
             .color('#fb7299')
           Text(this.statusText(task))
             .fontSize(10)
-            .fontColor('#999999')
+            .fontColor($r('app.color.text_tertiary'))
             .margin({ top: 3 })
         } else if (task.status == CacheTaskStatus.FAILED) {
           Text(this.retryingId == task.id ? '重试中...' : '下载失败')
@@ -141,7 +141,7 @@ struct OfflineCache {
         } else {
           Text('已缓存 ' + this.formatBytes(task.totalBytes))
             .fontSize(10)
-            .fontColor('#999999')
+            .fontColor($r('app.color.text_tertiary'))
             .margin({ top: 6 })
         }
       }
@@ -162,7 +162,7 @@ struct OfflineCache {
       }
       Text("删除")
         .fontSize(12)
-        .fontColor('#999999')
+        .fontColor($r('app.color.text_tertiary'))
         .padding({ left: 4, right: 4, top: 8, bottom: 8 })
         .onClick(() => {
           this.confirmRemove(task);
@@ -171,7 +171,7 @@ struct OfflineCache {
     .width('100%')
     .padding(10)
     .borderRadius(8)
-    .backgroundColor(Color.White)
+    .backgroundColor($r('app.color.surface'))
     .alignItems(VerticalAlign.Center)
     .onClick(() => {
       this.onItemClick(task);

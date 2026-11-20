@@ -26,7 +26,7 @@ export struct MineOptView {
           .height(24)
         Text($r('app.string.offline_cache'))
           .fontSize(12)
-          .fontColor('#333333')
+          .fontColor($r('app.color.text_primary'))
           .margin({ top: 8 })
       }.layoutWeight(1)
       .onClick(() => {
@@ -39,7 +39,7 @@ export struct MineOptView {
           .height(24)
         Text($r('app.string.history_record'))
           .fontSize(12)
-          .fontColor('#333333')
+          .fontColor($r('app.color.text_primary'))
           .margin({ top: 8 })
       }.layoutWeight(1)
       .onClick(() => {
@@ -52,7 +52,7 @@ export struct MineOptView {
           .height(24)
         Text($r('app.string.my_favorite'))
           .fontSize(12)
-          .fontColor('#333333')
+          .fontColor($r('app.color.text_primary'))
           .margin({ top: 8 })
       }.layoutWeight(1)
       .onClick(() => {
@@ -65,7 +65,7 @@ export struct MineOptView {
           .height(24)
         Text($r('app.string.watch_later'))
           .fontSize(12)
-          .fontColor('#333333')
+          .fontColor($r('app.color.text_primary'))
           .margin({ top: 8 })
       }.layoutWeight(1)
       .onClick(() => {

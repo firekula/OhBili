@@ -63,6 +63,18 @@ export abstract class IPlayer {
 
     abstract getDuration(): number
 
+    /** 当前播放位置（毫秒），未起播返回 0 */
+    abstract getCurrentTime(): number
+
+    /** 设置倍速（AvPlayer 支持 0.75/1.0/1.25/1.75/2.0） */
+    abstract setSpeed(speed: number): void
+
+    /** 设置是否循环播放 */
+    abstract setLoop(loop: boolean): void
+
+    /** 播放中切换数据源（复用实例，用于清晰度切换；prepared 后由上层 seek 续播） */
+    abstract switchSource(url: string, headers?: Map<string,string>): void
+
     abstract setPlayId(playId: string)
 
     abstract getPlayId(): string

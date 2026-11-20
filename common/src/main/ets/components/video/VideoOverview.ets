@@ -41,7 +41,7 @@ export struct VideoOverview {
             } else {
               Column() {
                 Flex().width('100%').height(1)
-                  .backgroundColor('#ffeeeeee')
+                  .backgroundColor($r('app.color.divider'))
                 PopularItemView({ item: item })
               }.padding({ left: 16, right: 16 })
             }

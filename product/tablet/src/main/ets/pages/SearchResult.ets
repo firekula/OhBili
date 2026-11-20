@@ -90,10 +90,10 @@ struct SearchResultPage {
         }
       }, item => item.bvid)
     }
-    .backgroundColor('#ffffff')
+    .backgroundColor($r('app.color.surface'))
     .width('100%')
     .padding({ left: 16, right: 16 })
-    .divider({ strokeWidth: 1, color: '#ffeeeeee' })
+    .divider({ strokeWidth: 1, color: $r('app.color.divider') })
     .edgeEffect(EdgeEffect.None)
   }
 

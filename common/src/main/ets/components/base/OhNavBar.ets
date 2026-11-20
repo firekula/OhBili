@@ -16,7 +16,7 @@ export struct OhNavBar {
   private isTitleCenter = false;
   private isBack = true;
   private title: string;
-  private bgColor: ResourceColor = Color.White;
+  private bgColor: ResourceColor = $r('app.color.surface');
   private shadowRadius: number = 0;
   build() {
     Stack() {
@@ -33,7 +33,7 @@ export struct OhNavBar {
         if (!this.isTitleCenter) {
           Text(this.title)
             .fontSize(16)
-            .fontColor(Color.Black)
+            .fontColor($r('app.color.text_primary'))
             .fontWeight(FontWeight.Medium)
             .padding({ left: 12, right: 12 })
         }
@@ -44,13 +44,13 @@ export struct OhNavBar {
           Text(this.title)
             .width('100%')
             .fontSize(20)
-            .fontColor(Color.Black)
+            .fontColor($r('app.color.text_primary'))
             .fontWeight(FontWeight.Medium)
             .textAlign(TextAlign.Center)
         }.width('100%').height('100%')
       }
     }.width('100%').height(48)
-    .border({width: {bottom: 0.5}, color: '#cccccc'})
+    .border({width: {bottom: 0.5}, color: $r('app.color.border')})
     .backgroundColor(this.bgColor)
     .shadow({radius: this.shadowRadius, color: Color.Gray})
   }

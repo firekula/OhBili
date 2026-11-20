@@ -50,7 +50,7 @@ export struct DynamicVideoCard {
 
       Text(this.archive.title ?? '')
         .fontSize(14)
-        .fontColor('#333333')
+        .fontColor($r('app.color.text_primary'))
         .fontWeight(FontWeight.Medium)
         .maxLines(2)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -64,14 +64,14 @@ export struct DynamicVideoCard {
           .height(14)
         Text(StringUtil.generateCN(this.viewCount()))
           .fontSize(11)
-          .fontColor('#888888')
+          .fontColor($r('app.color.text_secondary'))
           .margin({ left: 3, right: 10 })
         Image($r('app.media.ic_danmakus'))
           .width(14)
           .height(14)
         Text(StringUtil.generateCN(this.danmakuCount()))
           .fontSize(11)
-          .fontColor('#888888')
+          .fontColor($r('app.color.text_secondary'))
           .margin({ left: 3 })
       }
       .margin({ top: 4 })
@@ -79,7 +79,7 @@ export struct DynamicVideoCard {
     }
     .width('100%')
     .borderRadius(4)
-    .backgroundColor('#f6f6f6')
+    .backgroundColor($r('app.color.surface_soft'))
     .padding(8)
     .onClick(() => {
       router.pushUrl({ url: 'pages/Video', params: { vInfo: this.buildBaseVideo() } });

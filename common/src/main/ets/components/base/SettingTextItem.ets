@@ -36,9 +36,9 @@ export struct SettingTextItem {
 
   build() {
     Row() {
-      Text(this.title).fontSize(14).fontColor('#333333')
+      Text(this.title).fontSize(14).fontColor($r('app.color.text_primary'))
       Blank()
-      Text(this.value).fontSize(14).fontColor('#888888').onClick(this.callback)
+      Text(this.value).fontSize(14).fontColor($r('app.color.text_secondary')).onClick(this.callback)
     }.width('100%').height(50)
   }
 }

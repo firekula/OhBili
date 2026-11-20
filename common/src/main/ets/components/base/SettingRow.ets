@@ -22,12 +22,12 @@ export struct SettingRow {
     Row() {
       Image(this.icon).width(26).height(26).borderRadius(13).margin({ left: 14 })
       Column() {
-        Text(this.title).fontSize(16).fontColor('#333333')
+        Text(this.title).fontSize(16).fontColor($r('app.color.text_primary'))
           .alignSelf(ItemAlign.Start)
           .margin({ top: 4 })
         Text(this.info)
           .fontSize(12)
-          .fontColor('#888888')
+          .fontColor($r('app.color.text_secondary'))
           .maxLines(2)
           .alignSelf(ItemAlign.Start)
           .margin({ top: 4, bottom: 4 })

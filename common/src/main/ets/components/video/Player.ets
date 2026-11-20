@@ -88,6 +88,20 @@ export struct PlayerView {
     this.onWindowSizeChange(size.width, size.height);
   };
   @State mIsShowDanmaku: boolean = true;
+  /** 清晰度档位表（qn 与描述下标对应，来自 playurl 响应） */
+  @State mAcceptQuality: number[] = [];
+  @State mAcceptDesc: string[] = [];
+  /** 当前清晰度 qn */
+  @State mCurrentQn: number = 0;
+  /** 大会员（高清档位解锁） */
+  @State mIsVip: boolean = false;
+  /** 播放倍速（AVPlayer 支持 0.75/1.0/1.25/1.75/2.0） */
+  @State mSpeed: number = 1.0;
+  /** 循环播放 */
+  @State mLoopPlay: boolean = false;
+  /** 弹幕设置（与设置页共享持久化键，经回调即时应用到弹幕上下文） */
+  @StorageLink('danmuFontSize') danmuFontSize: string = '1.0X';
+  @StorageLink('danmuOpacity') danmuOpacity: string = '100%';
   @State mDanmakuModel: DanmakuView.Model = new DanmakuView.Model();
   private mDanmakuContext: DanmakuContext;
   private mParser: BaseDanmakuParser;
@@ -220,6 +234,14 @@ export struct PlayerView {
       }
     }
     this.player.setPlayId(this.bvid);
+    // 大会员状态（清晰度档位解锁）、默认弹幕开关、记忆倍速
+    this.mIsVip = (AppStorage.get<number>('ohBiliVipStatus') ?? 0) === 1;
+    this.mIsShowDanmaku = (AppStorage.get<string>('openDanmu') ?? '1') !== '0';
+    let storedSpeed: string = AppStorage.get<string>('playSpeed') ?? '1.0X';
+    let parsedSpeed: number = parseFloat(storedSpeed);
+    if (!isNaN(parsedSpeed) && parsedSpeed > 0 && parsedSpeed <= 2.0) {
+      this.mSpeed = parsedSpeed;
+    }
     if (this.cid > 0) {
       this.getDanmaku(true);
     }
@@ -388,11 +410,26 @@ export struct PlayerView {
         mIsShowCtl: $mIsShowCtl,
         danmakuPn: $danmakuPn,
         mIsShowDanmaku: $mIsShowDanmaku,
+        mAcceptQuality: $mAcceptQuality,
+        mAcceptDesc: $mAcceptDesc,
+        mCurrentQn: $mCurrentQn,
+        mIsVip: this.mIsVip,
+        mSpeed: $mSpeed,
+        mLoopPlay: $mLoopPlay,
         requestEnterFullScreen: (): void => {
           this.enterFullScreen();
         },
         requestExitFullScreen: (): void => {
           this.exitFullScreen();
+        },
+        onSwitchQuality: (qn: number): void => {
+          this.switchQuality(qn);
+        },
+        onSetSpeed: (speed: number): void => {
+          this.setPlaySpeed(speed);
+        },
+        onDanmakuSettingsChanged: (): void => {
+          this.onDanmakuSettingsChanged();
         }
       })
 
@@ -411,6 +448,8 @@ export struct PlayerView {
         }.width('100%').height('100%')
         .backgroundColor('#33000000')
         .justifyContent(FlexAlign.Center)
+        // 透传模式：重播按钮自身可点，遮罩其余区域不拦截下层控制视图的触摸
+        .hitTestBehavior(HitTestMode.Transparent)
       }
 
       if (this.loadingVisible) {
@@ -502,14 +541,121 @@ export struct PlayerView {
   }
 
   private getPlayUrl(bvid: string, cid: number) {
-    ApiManager.getInstance().requestPlayUrl(bvid, cid).then((resp: PlayUrlResponse) => {
-      if (this.mDestroyed) {
+    // 记忆的清晰度档位（播放器菜单选择过）：走 qn 扩展端点；否则保持原默认链路
+    let preferredQn: number = AppStorage.get<number>('ohBiliPlayQn') ?? 0;
+    ApiManager.getInstance().requestPlayUrl(bvid, cid, preferredQn > 0 ? preferredQn : undefined)
+      .then((resp: PlayUrlResponse) => {
+      if (this.mDestroyed || resp == null || resp.data == null) {
         return;
       }
+      this.updateQualityInfo(resp);
       this.mPlayUrl = resp.data.durl[0].url.replace(/\\u0026/g, '&')
       BLog.i("requestPlayUrl Response Data url=" + this.mPlayUrl);
       this.initPlay(this.mPlayUrl);
     });
+  }
+
+  /** 记录 playurl 响应中的清晰度档位表与当前档位（清晰度菜单数据源） */
+  private updateQualityInfo(resp: PlayUrlResponse): void {
+    if (resp == null || resp.data == null) {
+      return;
+    }
+    this.mCurrentQn = resp.data.quality ?? 0;
+    if (resp.data.accept_quality != null && resp.data.accept_quality.length > 0) {
+      this.mAcceptQuality = resp.data.accept_quality;
+      this.mAcceptDesc = resp.data.accept_description ?? [];
+    }
+  }
+
+  /** 切换清晰度：记忆播放位置与弹幕分段，重设数据源后 seek 续播 */
+  private switchQuality(qn: number): void {
+    if (qn === this.mCurrentQn || this.mDestroyed || this.localPath != '' || this.cid <= 0) {
+      return;
+    }
+    let curMs: number = this.player.getCurrentTime();
+    this.showLoadIng();
+    ApiManager.getInstance().requestPlayUrl(this.bvid, this.cid, qn).then((resp: PlayUrlResponse) => {
+      if (this.mDestroyed) {
+        return;
+      }
+      if (resp == null || resp.data == null || resp.data.durl == null
+        || resp.data.durl.length === 0) {
+        this.hideLoadIng();
+        this.getUIContext().getPromptAction().showToast({ message: '清晰度切换失败，请稍后重试' });
+        return;
+      }
+      this.updateQualityInfo(resp);
+      this.startAt = curMs / 1000.0;
+      this.mPlayUrl = resp.data.durl[0].url.replace(/\\u0026/g, '&');
+      BLog.i('BiliPlayer switchQuality qn=' + qn + ', resumeMs=' + curMs);
+      // 记忆用户选择的清晰度档位（下次起播优先使用）
+      AppStorage.setOrCreate('ohBiliPlayQn', qn);
+      // 服务端回退（如 html5 线路最高 720P）时提示实际档位
+      const gotQn: number = resp.data.quality ?? 0;
+      if (gotQn > 0 && gotQn !== qn) {
+        let gotDesc: string = '';
+        for (let i = 0; i < this.mAcceptQuality.length; i++) {
+          if (this.mAcceptQuality[i] === gotQn) {
+            gotDesc = this.mAcceptDesc.length > i ? this.mAcceptDesc[i] : '';
+            break;
+          }
+        }
+        this.getUIContext().getPromptAction()
+          .showToast({ message: '当前播放线路最高支持' + (gotDesc !== '' ? ' ' + gotDesc : '') + '，已为您切换' });
+      }
+      // 弹幕分段对齐（与进度条 seek 相同规则）
+      if ((this.danmakuPn - 1) * DANMAKU_TIME <= curMs && this.danmakuPn * DANMAKU_TIME > curMs) {
+        // 同段：重设数据源后弹幕计时随播放恢复
+      } else {
+        this.danmakuPn = Math.floor(curMs / DANMAKU_TIME) + 1;
+      }
+      let headers = new Map([
+        ["User-Agent", ApiConstants.userAgent],
+        ["Connection", "keep-alive"],
+        ["Referer", ApiConstants.biliBase]
+      ]);
+      this.player.switchSource(this.mPlayUrl, headers);
+    });
+  }
+
+  /** 设置倍速并持久化（设置页"播放速度"共享该键） */
+  private setPlaySpeed(speed: number): void {
+    this.mSpeed = speed;
+    this.player.setSpeed(speed);
+    AppStorage.setOrCreate('playSpeed', this.speedLabelOf(speed));
+  }
+
+  private speedLabelOf(speed: number): string {
+    if (speed === Math.round(speed)) {
+      return speed.toFixed(1) + 'X';
+    }
+    return speed.toFixed(2) + 'X';
+  }
+
+  /** 弹幕字号倍率（相对基准 1.2，'1.0X' → 1.0） */
+  private danmakuScaleValue(): number {
+    let v: number = parseFloat(this.danmuFontSize);
+    if (isNaN(v) || v <= 0) {
+      return 1.0;
+    }
+    return v;
+  }
+
+  /** 弹幕不透明度（'100%' → 1.0） */
+  private danmakuOpacityNum(): number {
+    let v: number = parseFloat(this.danmuOpacity);
+    if (isNaN(v) || v <= 0) {
+      return 1.0;
+    }
+    return Math.min(v / 100.0, 1.0);
+  }
+
+  /** 弹幕设置变更（设置页/播放器菜单）：即时应用到弹幕上下文 */
+  onDanmakuSettingsChanged(): void {
+    if (this.mDanmakuContext != null) {
+      this.mDanmakuContext.setScaleTextSize(1.2 * this.danmakuScaleValue());
+      this.mDanmakuContext.setDanmakuTransparency(this.danmakuOpacityNum());
+    }
   }
 
   private showLoadIng() {
@@ -567,6 +713,12 @@ export struct PlayerView {
         } else if (status == IPlayStatus.PREPARED) {
           thisClass.mFirst = false;
           thisClass.hideLoadIng();
+          if (thisClass.mSpeed != 1.0) {
+            thisClass.player.setSpeed(thisClass.mSpeed);
+          }
+          if (thisClass.mLoopPlay) {
+            thisClass.player.setLoop(true);
+          }
           if (thisClass.startAt > 0) {
             // 续播：seek 到上次观看进度，seek 完成后播放器自动恢复播放
             BLog.i('BiliPlayer resume seekTo: ' + thisClass.startAt + 's');
@@ -614,7 +766,9 @@ export struct PlayerView {
     this.mDanmakuContext.setDanmakuStyle(DANMAKU_STYLE_STROKEN, 3)
       .setDuplicateMergingEnabled(false)
       .setScrollSpeedFactor(1.2)
-      .setScaleTextSize(1.2)
+      // 字号/不透明度来自用户设置（与设置页/播放器菜单共享键）
+      .setScaleTextSize(1.2 * this.danmakuScaleValue())
+      .setDanmakuTransparency(this.danmakuOpacityNum())
       .setCacheStuffer(new SpannedCacheStuffer(), this.mCacheStufferAdapter) // 图文混排使用SpannedCacheStuffer
       .setMaximumLines(maxLinesPair)
       .preventOverlapping(overlappingEnablePair)
@@ -661,6 +815,10 @@ export struct PlayerView {
       })
       this.mDanmakuModel.prepare(this.mParser, this.mDanmakuContext);
       this.mDanmakuModel.showFPS(false);
+      if (!this.mIsShowDanmaku) {
+        // 设置页"默认打开弹幕"关闭：初始隐藏
+        this.mDanmakuModel.setVisibility(false);
+      }
     }
   }
 
@@ -687,10 +845,31 @@ struct PlayerControlView {
   @Link mIsShowCtl: boolean;
   @Link danmakuPn: number;
   @Link mIsShowDanmaku: boolean;
+  /** 清晰度档位表（与 PlayerView 同源） */
+  @Link mAcceptQuality: number[];
+  @Link mAcceptDesc: string[];
+  @Link mCurrentQn: number;
+  private mIsVip: boolean = false;
+  @Link mSpeed: number;
+  @Link mLoopPlay: boolean;
+  /** 三点菜单弹层 */
+  @State mSheetVisible: boolean = false;
+  /** 弹层当前页：menu | danmaku | quality | speed */
+  @State mSheetMode: string = 'menu';
+  /** 弹幕设置滑条（与设置页共享持久化键，变更经 PlayerView @Watch 即时生效） */
+  @StorageLink('danmuFontSize') mDanmakuScaleStr: string = '1.0X';
+  @StorageLink('danmuOpacity') mDanmakuOpacityStr: string = '100%';
   /** 进入/退出全屏请求：全屏时机与窗口旋转由 PlayerView 统一决策（需要视频宽高比） */
   requestEnterFullScreen: () => void = () => {
   };
   requestExitFullScreen: () => void = () => {
+  };
+  onSwitchQuality: (qn: number) => void = (qn: number) => {
+  };
+  onSetSpeed: (speed: number) => void = (speed: number) => {
+  };
+  /** 弹幕设置变更（滑条即时生效回调，由 PlayerView 应用到弹幕上下文） */
+  onDanmakuSettingsChanged: () => void = () => {
   };
   @State mShowSeekPreview: boolean = false;
   @State mSeekPreviewText: string = "";
@@ -718,6 +897,8 @@ struct PlayerControlView {
             .width(24)
             .height(24)
             .onClick(_ => {
+              this.mSheetMode = 'menu';
+              this.mSheetVisible = true;
             })
         }.padding(8)
         .width('100%')
@@ -774,9 +955,20 @@ struct PlayerControlView {
 
           Blank()
 
-          Image(this.mIsShowDanmaku? $r("app.media.ic_danmaku_switch_on") : $r("app.media.ic_danmaku_switch_off"))
-          .width(24)
-          .height(24)
+          // 弹幕开关：圆形按钮加大热区，开/关状态背景与透明度区分
+          Row() {
+            Image(this.mIsShowDanmaku ? $r("app.media.ic_danmaku_switch_on") :
+            $r("app.media.ic_danmaku_switch_off"))
+              .width(22)
+              .height(22)
+              .fillColor(Color.White)
+          }
+          .width(34)
+          .height(34)
+          .borderRadius(17)
+          .backgroundColor(this.mIsShowDanmaku ? '#4d000000' : '#26000000')
+          .opacity(this.mIsShowDanmaku ? 1.0 : 0.7)
+          .justifyContent(FlexAlign.Center)
           .onClick(() => {
             this.mIsShowDanmaku = !this.mIsShowDanmaku;
             this.mDanmakuModel.setVisibility(this.mIsShowDanmaku);
@@ -817,6 +1009,15 @@ struct PlayerControlView {
     .height('100%')
     .onClick(() => {
       this.mIsShowCtl = !this.mIsShowCtl
+    })
+    // 弹层锚定常驻根节点：避免 if(mIsShowCtl) 内的图标卸载导致弹层被连带关闭
+    .bindSheet($$this.mSheetVisible, this.playerSettingsSheet(), {
+      height: 400,
+      dragBar: true,
+      showClose: false,
+      onDisappear: () => {
+        this.mSheetMode = 'menu';
+      }
     })
     .gesture(GestureGroup(GestureMode.Exclusive,
       TapGesture({ count: 2 })
@@ -892,6 +1093,361 @@ struct PlayerControlView {
     } else {
       this.danmakuPn = Math.floor(seekValue / DANMAKU_TIME) + 1;
     }
+  }
+
+  /** 三点菜单弹层：主菜单 / 弹幕设置 / 清晰度选择 / 播放速度 */
+  @Builder
+  playerSettingsSheet() {
+    Column() {
+      Row() {
+        if (this.mSheetMode !== 'menu') {
+          Image($r('app.media.ic_player_back_bold'))
+            .width(20)
+            .height(20)
+            .onClick(() => {
+              this.mSheetMode = 'menu';
+            })
+        }
+        Text(this.sheetTitle())
+          .fontSize(16)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#333333')
+          .margin({ left: this.mSheetMode !== 'menu' ? 8 : 0 })
+        Blank()
+      }
+      .width('100%')
+      .height(48)
+      .padding({ left: 16, right: 16 })
+      .alignItems(VerticalAlign.Center)
+      Divider()
+        .color('#f0f0f0')
+        .margin({ left: 16, right: 16 })
+      Scroll() {
+        Column() {
+          if (this.mSheetMode === 'menu') {
+            this.menuPane()
+          } else if (this.mSheetMode === 'danmaku') {
+            this.danmakuPane()
+          } else if (this.mSheetMode === 'quality') {
+            this.qualityPane()
+          } else {
+            this.speedPane()
+          }
+        }
+        .width('100%')
+        .padding({ left: 16, right: 16, top: 4, bottom: 16 })
+      }
+      .layoutWeight(1)
+      .edgeEffect(EdgeEffect.Spring)
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor('#ffffff')
+  }
+
+  private sheetTitle(): string {
+    if (this.mSheetMode === 'danmaku') {
+      return '弹幕设置';
+    }
+    if (this.mSheetMode === 'quality') {
+      return '清晰度选择';
+    }
+    if (this.mSheetMode === 'speed') {
+      return '播放速度';
+    }
+    return '播放设置';
+  }
+
+  @Builder
+  menuPane() {
+    Column() {
+      this.menuRow('弹幕设置', '', () => {
+        this.mSheetMode = 'danmaku';
+      })
+      this.menuRow('清晰度选择', this.currentQualityDesc(), () => {
+        this.mSheetMode = 'quality';
+      })
+      this.menuRow('播放速度', this.speedLabel(), () => {
+        this.mSheetMode = 'speed';
+      })
+      Row() {
+        Text('循环播放')
+          .fontSize(15)
+          .fontColor('#333333')
+        Blank()
+        Toggle({ type: ToggleType.Switch, isOn: this.mLoopPlay })
+          .selectedColor('#fb7299')
+          .onChange((isOn: boolean) => {
+            this.mLoopPlay = isOn;
+            this.player.setLoop(isOn);
+          })
+      }
+      .width('100%')
+      .height(48)
+    }
+    .width('100%')
+  }
+
+  @Builder
+  menuRow(title: string, value: string, onTap: () => void) {
+    Row() {
+      Text(title)
+        .fontSize(15)
+        .fontColor('#333333')
+      Blank()
+      if (value !== '') {
+        Text(value)
+          .fontSize(13)
+          .fontColor('#999999')
+          .margin({ right: 4 })
+          .maxLines(1)
+      }
+      Text('›')
+        .fontSize(18)
+        .fontColor('#cccccc')
+    }
+    .width('100%')
+    .height(48)
+    .onClick(() => {
+      onTap();
+    })
+  }
+
+  @Builder
+  danmakuPane() {
+    Column() {
+      Row() {
+        Text('弹幕字号')
+          .fontSize(15)
+          .fontColor('#333333')
+        Blank()
+        Text(this.mDanmakuScaleStr)
+          .fontSize(13)
+          .fontColor('#fb7299')
+      }
+      .width('100%')
+      .height(40)
+      Slider({
+        value: this.scaleSliderValue(),
+        min: 0.6,
+        max: 1.6,
+        step: 0.1,
+        style: SliderStyle.InSet
+      })
+        .width('100%')
+        .blockColor('#fb7299')
+        .trackColor('#f0f0f0')
+        .selectedColor('#fb7299')
+        .onChange((value: number, mode: SliderChangeMode) => {
+          this.mDanmakuScaleStr = value.toFixed(1) + 'X';
+          this.onDanmakuSettingsChanged();
+        })
+      Row() {
+        Text('弹幕不透明度')
+          .fontSize(15)
+          .fontColor('#333333')
+        Blank()
+        Text(this.mDanmakuOpacityStr)
+          .fontSize(13)
+          .fontColor('#fb7299')
+      }
+      .width('100%')
+      .height(40)
+      .margin({ top: 8 })
+      Slider({
+        value: this.opacitySliderValue(),
+        min: 0.5,
+        max: 1.0,
+        step: 0.05,
+        style: SliderStyle.InSet
+      })
+        .width('100%')
+        .blockColor('#fb7299')
+        .trackColor('#f0f0f0')
+        .selectedColor('#fb7299')
+        .onChange((value: number, mode: SliderChangeMode) => {
+          this.mDanmakuOpacityStr = Math.round(value * 100) + '%';
+          this.onDanmakuSettingsChanged();
+        })
+    }
+    .width('100%')
+  }
+
+  @Builder
+  qualityPane() {
+    Column() {
+      if (this.mAcceptQuality.length === 0) {
+        Text('暂无可用清晰度信息')
+          .fontSize(14)
+          .fontColor('#999999')
+          .margin({ top: 24 })
+      }
+      ForEach(this.mAcceptQuality, (qn: number) => {
+        Row() {
+          Text(this.qualityDescAt(qn))
+            .fontSize(15)
+            .fontColor(this.mCurrentQn === qn ? '#fb7299' :
+            (this.qualitySelectable(qn) ? '#333333' : '#bbbbbb'))
+          if (this.isVipQn(qn)) {
+            Text('大会员')
+              .fontSize(10)
+              .fontColor(Color.White)
+              .backgroundColor(this.qualitySelectable(qn) ? '#fb7299' : '#bbbbbb')
+              .borderRadius(4)
+              .padding({ left: 5, right: 5, top: 1, bottom: 1 })
+              .margin({ left: 8 })
+          }
+          Blank()
+          if (this.mCurrentQn === qn) {
+            Text('✓')
+              .fontSize(16)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#fb7299')
+          }
+        }
+        .width('100%')
+        .height(46)
+        .onClick(() => {
+          this.onQualityTap(qn);
+        })
+      }, (qn: number) => 'qn_' + qn)
+    }
+    .width('100%')
+  }
+
+  @Builder
+  speedPane() {
+    Column() {
+      ForEach(this.speedOptions(), (speed: number) => {
+        Row() {
+          Text(this.speedLabelOf(speed))
+            .fontSize(15)
+            .fontColor(this.mSpeed === speed ? '#fb7299' : '#333333')
+          Blank()
+          if (this.mSpeed === speed) {
+            Text('✓')
+              .fontSize(16)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#fb7299')
+          }
+        }
+        .width('100%')
+        .height(46)
+        .onClick(() => {
+          this.onSetSpeed(speed);
+        })
+      }, (speed: number) => 'speed_' + speed)
+    }
+    .width('100%')
+  }
+
+  /** 弹幕字号滑条当前值（'1.2X' → 1.2） */
+  private scaleSliderValue(): number {
+    let v: number = parseFloat(this.mDanmakuScaleStr);
+    if (isNaN(v) || v < 0.6) {
+      return 1.0;
+    }
+    return Math.min(v, 1.6);
+  }
+
+  /** 弹幕不透明度滑条当前值（'100%' → 1.0） */
+  private opacitySliderValue(): number {
+    let v: number = parseFloat(this.mDanmakuOpacityStr);
+    if (isNaN(v) || v < 50) {
+      return 1.0;
+    }
+    return Math.min(v / 100.0, 1.0);
+  }
+
+  /** 当前清晰度描述（菜单行右侧值） */
+  private currentQualityDesc(): string {
+    if (this.mCurrentQn <= 0) {
+      return '';
+    }
+    return this.qualityDescAt(this.mCurrentQn);
+  }
+
+  /** qn → 描述：优先 playurl 返回的描述表，缺失时静态兜底 */
+  private qualityDescAt(qn: number): string {
+    let idx: number = this.mAcceptQuality.indexOf(qn);
+    if (idx >= 0 && idx < this.mAcceptDesc.length) {
+      let desc: string = this.mAcceptDesc[idx];
+      if (desc != null && desc !== '') {
+        return desc;
+      }
+    }
+    return PlayerControlView.qnDescFallback(qn);
+  }
+
+  private static qnDescFallback(qn: number): string {
+    if (qn >= 127) {
+      return '8K 超高清';
+    }
+    if (qn >= 126) {
+      return '杜比视界';
+    }
+    if (qn >= 125) {
+      return 'HDR 真彩';
+    }
+    if (qn >= 120) {
+      return '4K 超清';
+    }
+    if (qn >= 116) {
+      return '1080P60';
+    }
+    if (qn >= 112) {
+      return '1080P 高码率';
+    }
+    if (qn >= 80) {
+      return '1080P 高清';
+    }
+    if (qn >= 74) {
+      return '720P60';
+    }
+    if (qn >= 64) {
+      return '720P 高清';
+    }
+    if (qn >= 32) {
+      return '480P 清晰';
+    }
+    return '360P 流畅';
+  }
+
+  /** 720P60 及以上为大会员专享档位 */
+  private isVipQn(qn: number): boolean {
+    return qn >= 74;
+  }
+
+  private qualitySelectable(qn: number): boolean {
+    return !this.isVipQn(qn) || this.mIsVip;
+  }
+
+  private onQualityTap(qn: number): void {
+    if (!this.qualitySelectable(qn)) {
+      this.getUIContext().getPromptAction().showToast({ message: '该清晰度为大会员专享' });
+      return;
+    }
+    if (qn === this.mCurrentQn) {
+      return;
+    }
+    this.mSheetVisible = false;
+    this.onSwitchQuality(qn);
+  }
+
+  private speedOptions(): number[] {
+    // AVPlayer 仅支持这五档倍速
+    return [0.75, 1.0, 1.25, 1.75, 2.0];
+  }
+
+  private speedLabelOf(speed: number): string {
+    if (speed === Math.round(speed)) {
+      return speed.toFixed(1) + 'X';
+    }
+    return speed.toFixed(2) + 'X';
+  }
+
+  private speedLabel(): string {
+    return this.speedLabelOf(this.mSpeed);
   }
 
   private showLoadIng() {

@@ -13,6 +13,7 @@
 import router from '@ohos.router';
 import util from '@ohos.util';
 import { WindowManager } from '@ohos/common';
+import { ThemeUtil } from '@ohos/common';
 import { ApiManager } from '@ohos/common';
 import { BLog } from '@ohos/common';
 
@@ -32,6 +33,11 @@ struct Splash {
     }
     BLog.i("appUuid: " + this.appUuid);
 
+    // 深浅色模式：应用持久化选择（跟随系统/浅色/深色）并刷新状态栏配色
+    let colorMode: string = AppStorage.get<string>('ohBiliColorMode') ?? ThemeUtil.MODE_FOLLOW_SYSTEM;
+    ThemeUtil.applyColorMode(colorMode);
+    ThemeUtil.applyThemeBars();
+
     this.initTask();
     setTimeout(() => {
       router.replaceUrl({ url: "pages/Index" });
@@ -44,8 +50,7 @@ struct Splash {
   }
 
   onPageShow() {
-    WindowManager.setLayoutFullScreen(false, WindowManager.COLOR_WHITE,
-      WindowManager.COLOR_BLACK, WindowManager.COLOR_WHITE, WindowManager.COLOR_BLACK);
+    ThemeUtil.applyThemeBars();
   }
 
   build() {
@@ -73,4 +78,7 @@ function storageInit() {
 
   PersistentStorage.PersistProp('appLogDebug', '0');
   PersistentStorage.PersistProp('appUuid', 'undefined');
+
+  // 深浅色模式（'跟随系统' | '浅色' | '深色'）
+  PersistentStorage.PersistProp('ohBiliColorMode', '跟随系统');
 }

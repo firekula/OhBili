@@ -13,6 +13,7 @@
 import { HomeView } from './Home';
 import { MineView } from './Mine';
 import { WindowManager } from '@ohos/common';
+import { ThemeUtil } from '@ohos/common';
 import { MomentsView } from './Moments';
 
 @Entry
@@ -25,24 +26,23 @@ struct Index {
   @Builder TabBuilder(title: string | Resource, targetIndex: number, imgPath: Resource) {
     Column() {
       Image(imgPath)
-        .fillColor(this.currentIndex === targetIndex ? '#1698CE' : '#6B6B6B')
+        .fillColor(this.currentIndex === targetIndex ? '#1698CE' : $r('app.color.tab_inactive'))
         .size({ width: this.currentIndex === targetIndex ? 22 : 20,
           height: this.currentIndex === targetIndex ? 22 : 20 })
       Text(title)
         .margin({ top: 6 })
         .fontSize(this.currentIndex === targetIndex ? 14 : 12)
-        .fontColor(this.currentIndex === targetIndex ? '#1698CE' : '#6B6B6B')
+        .fontColor(this.currentIndex === targetIndex ? '#1698CE' : $r('app.color.tab_inactive'))
     }
     .width('100%')
     .height('100%')
     .justifyContent(FlexAlign.Center)
-    .border({width: {top: 0.5}, color: '#cccccc'})
+    .border({width: {top: 0.5}, color: $r('app.color.border')})
   }
 
   onPageShow() {
     this.isShowPage = true;
-    WindowManager.setLayoutFullScreen(false, WindowManager.COLOR_WHITE,
-      WindowManager.COLOR_BLACK, WindowManager.COLOR_WHITE, WindowManager.COLOR_BLACK);
+    ThemeUtil.applyThemeBars();
   }
 
   onPageHide() {

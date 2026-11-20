@@ -47,14 +47,14 @@ struct Setting {
       .width('100%')
       .layoutWeight(1)
     }.width('100%').height('100%')
-    .backgroundColor('#f3f4f6')
+    .backgroundColor($r('app.color.page_bg'))
   }
 
   @Builder BaseSettingComponent() {
     Column() {
       Text("基本设置")
         .fontSize(18)
-        .fontColor('#333333')
+        .fontColor($r('app.color.text_primary'))
         .fontWeight(FontWeight.Medium)
         .alignSelf(ItemAlign.Start)
         .margin({ top: 24, bottom: 8 })
@@ -66,14 +66,14 @@ struct Setting {
     }.borderRadius(18)
     .padding({ left: 16, right: 16 })
     .margin({ top: 24 })
-    .backgroundColor('#fff')
+    .backgroundColor($r('app.color.surface'))
   }
 
   @Builder DanmuSettingComponent() {
     Column() {
       Text("弹幕设置")
         .fontSize(18)
-        .fontColor('#333333')
+        .fontColor($r('app.color.text_primary'))
         .fontWeight(FontWeight.Medium)
         .alignSelf(ItemAlign.Start)
         .margin({ top: 24, bottom: 8 })
@@ -85,7 +85,7 @@ struct Setting {
     }.borderRadius(18)
     .padding({ left: 16, right: 16 })
     .margin({ top: 24 })
-    .backgroundColor('#fff')
+    .backgroundColor($r('app.color.surface'))
   }
 
   @Builder
@@ -93,7 +93,7 @@ struct Setting {
     Column() {
       Text("视频设置")
         .fontSize(18)
-        .fontColor('#333333')
+        .fontColor($r('app.color.text_primary'))
         .fontWeight(FontWeight.Medium)
         .alignSelf(ItemAlign.Start)
         .margin({ top: 24, bottom: 8 })
@@ -105,11 +105,11 @@ struct Setting {
     }.borderRadius(18)
     .padding({ left: 16, right: 16 })
     .margin({ top: 24 })
-    .backgroundColor('#fff')
+    .backgroundColor($r('app.color.surface'))
   }
 
   @Builder
   ItemDivider() {
-    Flex().width('100%').height(0.5).backgroundColor("#d6d6d6")
+    Flex().width('100%').height(0.5).backgroundColor($r('app.color.border'))
   }
 }

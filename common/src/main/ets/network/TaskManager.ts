@@ -46,6 +46,7 @@ import { HistoryResponse } from '../model/response/HistoryResponse';
 import { FavFolderResponse } from '../model/response/FavFolderResponse';
 import { FavResourceResponse } from '../model/response/FavResourceResponse';
 import { WatchLaterResponse } from '../model/response/WatchLaterResponse';
+import { RelationStatResponse } from '../model/response/RelationStatResponse';
 
 export class TaskManager {
   public static getInstance(): TaskManager {
@@ -82,17 +83,31 @@ export class TaskManager {
     return response;
   }
 
-  async requestReply(oid: string, ps: number, next: number,
-                                  type: number, sort: number): Promise<ApiResponse<ReplyResponse>> {
-    var task = new taskPool.Task(requestReplyTask, oid, ps, next, type, sort);
+  async requestReply(cookie: string, oid: string, ps: number, next: number,
+                                   type: number, sort: number): Promise<ApiResponse<ReplyResponse>> {
+    var task = new taskPool.Task(requestReplyTask, cookie, oid, ps, next, type, sort);
     var response = await taskPool.execute(task) as ApiResponse<ReplyResponse>;
     return response;
   }
 
-  async requestReplyDetail(oid: string, root: number, ps: number,
-                                        pn: number, type: number): Promise<ApiResponse<ReplyDetailResponse>> {
-    var task = new taskPool.Task(requestReplyDetailTask, oid, root, ps, pn, type);
+  async requestReplyDetail(cookie: string, oid: string, root: number, ps: number,
+                                         pn: number, type: number): Promise<ApiResponse<ReplyDetailResponse>> {
+    var task = new taskPool.Task(requestReplyDetailTask, cookie, oid, root, ps, pn, type);
     var response = await taskPool.execute(task) as ApiResponse<ReplyDetailResponse>;
+    return response;
+  }
+
+  async requestReplyAction(cookie: string, oid: number, type: number, rpid: number,
+                           action: number, csrf: string): Promise<ApiResponse<EmptyResponse>> {
+    var task = new taskPool.Task(requestReplyActionTask, cookie, oid, type, rpid, action, csrf);
+    var response = await taskPool.execute(task) as ApiResponse<EmptyResponse>;
+    return response;
+  }
+
+  async requestReplyAdd(cookie: string, oid: number, type: number, root: number,
+                        parent: number, message: string, csrf: string): Promise<ApiResponse<EmptyResponse>> {
+    var task = new taskPool.Task(requestReplyAddTask, cookie, oid, type, root, parent, message, csrf);
+    var response = await taskPool.execute(task) as ApiResponse<EmptyResponse>;
     return response;
   }
 
@@ -230,6 +245,12 @@ export class TaskManager {
     Promise<ApiResponse<SeriesArchivesResponse>> {
     var task = new taskPool.Task(requestSeriesArchivesTask, mid, pn, ps);
     var response = await taskPool.execute(task) as ApiResponse<SeriesArchivesResponse>;
+    return response;
+  }
+
+  async requestRelationStat(vmid: number): Promise<ApiResponse<RelationStatResponse>> {
+    var task = new taskPool.Task(requestRelationStatTask, vmid);
+    var response = await taskPool.execute(task) as ApiResponse<RelationStatResponse>;
     return response;
   }
 
@@ -442,8 +463,8 @@ async function requestPlayUrlTask(bvid: string, cid: number): Promise<ApiRespons
   return new ApiResponse(result, code, message);
 }
 
-async function requestReplyTask(oid: string, ps: number, next: number,
-                                type: number, sort: number): Promise<ApiResponse<ReplyResponse>> {
+async function requestReplyTask(cookie: string, oid: string, ps: number, next: number,
+                                 type: number, sort: number): Promise<ApiResponse<ReplyResponse>> {
   "use concurrent"
   let code: number = 0
   let message: string = ""
@@ -452,7 +473,7 @@ async function requestReplyTask(oid: string, ps: number, next: number,
     let dataService = new ServiceBuilder()
       .setEndpoint(ApiConstants.apiBase)
       .build(DataService);
-    let resp: Response<ReplyResponse> = await dataService.getReply(oid, ps, next, type, sort);
+    let resp: Response<ReplyResponse> = await dataService.getReply(cookie, oid, ps, next, type, sort);
     code = resp.code();
     message = resp.message();
     result = resp.result;
@@ -463,8 +484,8 @@ async function requestReplyTask(oid: string, ps: number, next: number,
   return new ApiResponse(result, code, message);
 }
 
-async function requestReplyDetailTask(oid: string, root: number, ps: number,
-                                      pn: number, type: number): Promise<ApiResponse<ReplyDetailResponse>> {
+async function requestReplyDetailTask(cookie: string, oid: string, root: number, ps: number,
+                                       pn: number, type: number): Promise<ApiResponse<ReplyDetailResponse>> {
   "use concurrent"
   let code: number = 0
   let message: string = ""
@@ -473,7 +494,7 @@ async function requestReplyDetailTask(oid: string, root: number, ps: number,
     let dataService = new ServiceBuilder()
       .setEndpoint(ApiConstants.apiBase)
       .build(DataService);
-    let resp: Response<ReplyDetailResponse> = await dataService.getReplyDetail(oid, root, ps, pn, type);
+    let resp: Response<ReplyDetailResponse> = await dataService.getReplyDetail(cookie, oid, root, ps, pn, type);
     code = resp.code();
     message = resp.message();
     result = resp.result;
@@ -482,6 +503,50 @@ async function requestReplyDetailTask(oid: string, root: number, ps: number,
     message = err + "";
   }
   return new ApiResponse(result, code, message);
+}
+
+async function requestReplyActionTask(cookie: string, oid: number, type: number, rpid: number,
+                                      action: number, csrf: string): Promise<ApiResponse<EmptyResponse>> {
+  "use concurrent"
+  let code: number = 0
+  let message: string = ""
+  let result: EmptyResponse
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<EmptyResponse> = await dataService.replyAction(cookie, oid, type, rpid, action, csrf);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestReplyAddTask(cookie: string, oid: number, type: number, root: number,
+                                   parent: number, message: string, csrf: string): Promise<ApiResponse<EmptyResponse>> {
+  "use concurrent"
+  let code: number = 0
+  let errMsg: string = ""
+  let result: EmptyResponse
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    // retrofit buildURL 不做 URL 编码：中文/特殊字符内容需预编码后传参
+    let resp: Response<EmptyResponse> = await dataService.replyAdd(cookie, oid, type, root,
+      parent, encodeURIComponent(message), 1, csrf);
+    code = resp.code();
+    errMsg = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    errMsg = err + "";
+  }
+  return new ApiResponse(result, code, errMsg);
 }
 
 
@@ -888,6 +953,27 @@ async function requestSeriesArchivesTask(mid: number, pn: number, ps: number):
       .setEndpoint(ApiConstants.apiBase)
       .build(DataService);
     let resp: Response<SeriesArchivesResponse> = await dataService.getSeriesArchives(mid, '', ps, pn);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestRelationStatTask(vmid: number):
+  Promise<ApiResponse<RelationStatResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: RelationStatResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<RelationStatResponse> = await dataService.getRelationStat(vmid);
     code = resp.code();
     message = resp.message();
     result = resp.result;

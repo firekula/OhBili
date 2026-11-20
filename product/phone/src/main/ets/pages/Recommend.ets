@@ -53,7 +53,7 @@ export struct RecommendView {
         customLoad: null,
         customRefresh: null,
       })
-    }.backgroundColor('#eeeeee')
+    }.backgroundColor($r('app.color.page_bg'))
   }
 
   @Builder

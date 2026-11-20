@@ -61,8 +61,8 @@ struct Favorite {
       if (!this.loginState) {
         // 未登录：页内登录引导，不发起收藏夹请求
         Column() {
-          Text("你还未登录").fontSize(16).fontColor(Color.Black).fontWeight(FontWeight.Medium).margin({ top: 48 })
-          Text("登录账号，查看你的收藏夹").fontSize(15).fontColor('#888888').margin({ top: 16 })
+          Text("你还未登录").fontSize(16).fontColor($r('app.color.text_primary')).fontWeight(FontWeight.Medium).margin({ top: 48 })
+          Text("登录账号，查看你的收藏夹").fontSize(15).fontColor($r('app.color.text_secondary')).margin({ top: 16 })
           Button("登录").width(240).margin({ top: 16 }).onClick(() => {
             NavHelper.goLogin();
           })
@@ -77,7 +77,7 @@ struct Favorite {
             .height(36)
           Text("加载中...")
             .fontSize(14)
-            .fontColor('#888888')
+            .fontColor($r('app.color.text_secondary'))
             .margin({ top: 12 })
         }
         .width('100%')
@@ -85,8 +85,8 @@ struct Favorite {
         .justifyContent(FlexAlign.Center)
       } else if (this.state == LoadState.Error) {
         Column() {
-          Text("收藏夹加载失败").fontSize(16).fontColor(Color.Black).fontWeight(FontWeight.Medium)
-          Text("登录已失效或网络异常，请重试").fontSize(14).fontColor('#888888').margin({ top: 12 })
+          Text("收藏夹加载失败").fontSize(16).fontColor($r('app.color.text_primary')).fontWeight(FontWeight.Medium)
+          Text("登录已失效或网络异常，请重试").fontSize(14).fontColor($r('app.color.text_secondary')).margin({ top: 12 })
           Button("重试").width(240).margin({ top: 16 }).onClick(() => {
             this.loadFolders();
           })
@@ -97,8 +97,8 @@ struct Favorite {
       } else if (this.folders.length == 0) {
         // 空态
         Column() {
-          Text("暂无收藏夹").fontSize(16).fontColor(Color.Black).fontWeight(FontWeight.Medium).margin({ top: 48 })
-          Text("收藏喜欢的视频试试").fontSize(14).fontColor('#888888').margin({ top: 12 })
+          Text("暂无收藏夹").fontSize(16).fontColor($r('app.color.text_primary')).fontWeight(FontWeight.Medium).margin({ top: 48 })
+          Text("收藏喜欢的视频试试").fontSize(14).fontColor($r('app.color.text_secondary')).margin({ top: 12 })
         }
         .width('100%')
         .layoutWeight(1)
@@ -116,7 +116,7 @@ struct Favorite {
         .padding({ top: 8, bottom: 8, left: 12, right: 12 })
         .edgeEffect(EdgeEffect.None)
       }
-    }.width('100%').height('100%').backgroundColor('#eeeeee')
+    }.width('100%').height('100%').backgroundColor($r('app.color.page_bg'))
   }
 
   /**
@@ -141,12 +141,12 @@ struct Favorite {
       Column() {
         Text(folder.title ?? '')
           .fontSize(15)
-          .fontColor('#333333')
+          .fontColor($r('app.color.text_primary'))
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
         Text(StringUtil.generateCN(folder.media_count ?? 0) + '个内容')
           .fontSize(12)
-          .fontColor('#999999')
+          .fontColor($r('app.color.text_tertiary'))
           .margin({ top: 4 })
       }
       .layoutWeight(1)
@@ -155,12 +155,12 @@ struct Favorite {
 
       Text('›')
         .fontSize(20)
-        .fontColor('#cccccc')
+        .fontColor($r('app.color.placeholder'))
     }
     .width('100%')
     .padding(12)
     .borderRadius(8)
-    .backgroundColor(Color.White)
+    .backgroundColor($r('app.color.surface'))
     .alignItems(VerticalAlign.Center)
     .onClick(() => {
       router.pushUrl({

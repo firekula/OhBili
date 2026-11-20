@@ -42,7 +42,7 @@ struct Feedback {
         Column() {
           Text("为了能更快的定位问题，我们需要您完成以下操作：\n\n")
             .fontSize(16)
-            .fontColor("#333333")
+            .fontColor($r('app.color.text_primary'))
             .padding({ top: 16, left: 16, right: 16 })
           Text("1. 开启Debug日志；\n\n" +
           "2. 重启应用，重复异常操作流程；\n\n" +
@@ -50,7 +50,7 @@ struct Feedback {
           "4. 打开项目gitee网页，提交相关issue；")
             .width('100%')
             .fontSize(16)
-            .fontColor("#333333")
+            .fontColor($r('app.color.text_primary'))
             .padding(16)
           Row() {
             Button(this.appLogDebug == '1' ? "关闭Debug日志" : "开启Debug日志")

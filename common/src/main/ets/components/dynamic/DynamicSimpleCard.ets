@@ -40,7 +40,7 @@ export struct DynamicSimpleCard {
       Column() {
         Text(this.title != null && this.title !== '' ? this.title : this.desc)
           .fontSize(14)
-          .fontColor('#333333')
+          .fontColor($r('app.color.text_primary'))
           .maxLines(2)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .width('100%')
@@ -48,9 +48,9 @@ export struct DynamicSimpleCard {
         if (this.typeName != null && this.typeName !== '') {
           Text(this.typeName)
             .fontSize(10)
-            .fontColor('#999999')
+            .fontColor($r('app.color.text_tertiary'))
             .borderRadius(3)
-            .border({ width: 0.5, color: '#dddddd' })
+            .border({ width: 0.5, color: $r('app.color.border') })
             .padding({ left: 5, right: 5, top: 1, bottom: 1 })
             .margin({ top: 5 })
         }
@@ -62,7 +62,7 @@ export struct DynamicSimpleCard {
     .width('100%')
     .padding(8)
     .borderRadius(6)
-    .backgroundColor('#f6f6f6')
+    .backgroundColor($r('app.color.surface_soft'))
     .alignItems(VerticalAlign.Center)
     .onClick(() => {
       promptAction.showToast({

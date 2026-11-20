@@ -63,7 +63,7 @@ export struct HomeSearchBar {
     .height(this.barHeight)
     .borderRadius(25)
     .padding({ left: 20, right: 20 })
-    .backgroundColor("#eeeeee")
+    .backgroundColor($r('app.color.surface_soft'))
   }
 }
 
@@ -90,7 +90,7 @@ export struct SearchBar {
           color: Color.Gray
         })
         .height(40)
-        .backgroundColor(Color.White)
+        .backgroundColor($r('app.color.surface'))
         .onSubmit((enterKey: EnterKeyType, event: SubmitEvent) => {
           // 提交事件文本为输入法上屏的权威值（API 12+ SubmitEvent.text），
           // 组合输入场景下与 onChange 同步值可能存在时序差异，事件文本优先、this.keyword 兜底

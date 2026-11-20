@@ -19,8 +19,8 @@ export struct MomentsView {
     Column() {
       OhNavBar({ title: "动态", isBack: false, isTitleCenter: true })
 
-      Text("你还未登录").fontSize(16).fontColor(Color.Black).fontWeight(FontWeight.Medium).margin({top: 48})
-      Text("登录账号，查看你关注的UP主内容").fontSize(15).fontColor('#888888').margin({top: 16})
+      Text("你还未登录").fontSize(16).fontColor($r('app.color.text_primary')).fontWeight(FontWeight.Medium).margin({top: 48})
+      Text("登录账号，查看你关注的UP主内容").fontSize(15).fontColor($r('app.color.text_secondary')).margin({top: 16})
       Button("登录").width(240).margin({top: 16}).onClick(() => {
         promptAction.showToast({
           message: '登录功能暂未实现',

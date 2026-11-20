@@ -67,7 +67,7 @@ struct FavDetail {
             .height(36)
           Text("加载中...")
             .fontSize(14)
-            .fontColor('#888888')
+            .fontColor($r('app.color.text_secondary'))
             .margin({ top: 12 })
         }
         .width('100%')
@@ -75,8 +75,8 @@ struct FavDetail {
         .justifyContent(FlexAlign.Center)
       } else if (this.state == LoadState.Error) {
         Column() {
-          Text("收藏夹加载失败").fontSize(16).fontColor(Color.Black).fontWeight(FontWeight.Medium)
-          Text("登录已失效或网络异常，请重试").fontSize(14).fontColor('#888888').margin({ top: 12 })
+          Text("收藏夹加载失败").fontSize(16).fontColor($r('app.color.text_primary')).fontWeight(FontWeight.Medium)
+          Text("登录已失效或网络异常，请重试").fontSize(14).fontColor($r('app.color.text_secondary')).margin({ top: 12 })
           Button("重试").width(240).margin({ top: 16 }).onClick(() => {
             this.loadFirst();
           })
@@ -87,8 +87,8 @@ struct FavDetail {
       } else if (this.source().totalCount() == 0) {
         // 空态
         Column() {
-          Text("收藏夹是空的").fontSize(16).fontColor(Color.Black).fontWeight(FontWeight.Medium).margin({ top: 48 })
-          Text("收藏喜欢的视频到这里吧").fontSize(14).fontColor('#888888').margin({ top: 12 })
+          Text("收藏夹是空的").fontSize(16).fontColor($r('app.color.text_primary')).fontWeight(FontWeight.Medium).margin({ top: 48 })
+          Text("收藏喜欢的视频到这里吧").fontSize(14).fontColor($r('app.color.text_secondary')).margin({ top: 12 })
         }
         .width('100%')
         .layoutWeight(1)
@@ -105,7 +105,7 @@ struct FavDetail {
               ListItem() {
                 Text("没有更多了")
                   .fontSize(12)
-                  .fontColor('#999999')
+                  .fontColor($r('app.color.text_tertiary'))
                   .margin({ top: 4, bottom: 4 })
               }
             }
@@ -124,7 +124,7 @@ struct FavDetail {
         .width('100%')
         .layoutWeight(1)
       }
-    }.width('100%').height('100%').backgroundColor('#eeeeee')
+    }.width('100%').height('100%').backgroundColor($r('app.color.page_bg'))
   }
 
   /**
@@ -158,19 +158,19 @@ struct FavDetail {
       Column() {
         Text(item.title ?? '')
           .fontSize(14)
-          .fontColor(isFavMediaInvalid(item) ? '#999999' : '#333333')
+          .fontColor(isFavMediaInvalid(item) ? $r('app.color.text_tertiary') : $r('app.color.text_primary'))
           .maxLines(2)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .textAlign(TextAlign.Start)
         Blank()
         Text(item.upper == null ? '' : (item.upper.name ?? ''))
           .fontSize(12)
-          .fontColor('#888888')
+          .fontColor($r('app.color.text_secondary'))
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
         Text(this.favTimeText(item))
           .fontSize(11)
-          .fontColor('#999999')
+          .fontColor($r('app.color.text_tertiary'))
           .margin({ top: 4 })
       }
       .layoutWeight(1)
@@ -181,7 +181,7 @@ struct FavDetail {
       if (!isFavMediaInvalid(item)) {
         Text("取消收藏")
           .fontSize(12)
-          .fontColor('#999999')
+          .fontColor($r('app.color.text_tertiary'))
           .padding({ left: 8, right: 4, top: 8, bottom: 8 })
           .onClick(() => {
             this.confirmUnfav(item, index);
@@ -191,7 +191,7 @@ struct FavDetail {
     .width('100%')
     .padding(10)
     .borderRadius(8)
-    .backgroundColor(Color.White)
+    .backgroundColor($r('app.color.surface'))
     .alignItems(VerticalAlign.Center)
     .onClick(() => {
       this.onItemClick(item);

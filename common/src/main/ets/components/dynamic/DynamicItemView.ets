@@ -42,7 +42,7 @@ export struct DynamicItemView {
       this.StatBar()
     }
     .width('100%')
-    .backgroundColor(Color.White)
+    .backgroundColor($r('app.color.surface'))
     .borderRadius(8)
     .padding(12)
   }
@@ -62,12 +62,12 @@ export struct DynamicItemView {
       Column() {
         Text(this.authorName())
           .fontSize(14)
-          .fontColor('#333333')
+          .fontColor($r('app.color.text_primary'))
           .fontWeight(FontWeight.Medium)
           .maxLines(1)
         Text(this.pubTimeText())
           .fontSize(11)
-          .fontColor('#999999')
+          .fontColor($r('app.color.text_tertiary'))
           .margin({ top: 2 })
           .maxLines(1)
       }
@@ -116,7 +116,7 @@ export struct DynamicItemView {
         if (this.opusTitle() !== '') {
           Text(this.opusTitle())
             .fontSize(15)
-            .fontColor('#333333')
+            .fontColor($r('app.color.text_primary'))
             .fontWeight(FontWeight.Medium)
             .maxLines(2)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -191,7 +191,7 @@ export struct DynamicItemView {
       // 无 major 无 desc 的未知类型：文字占位（不空白）
       Text('暂不支持的内容类型')
         .fontSize(13)
-        .fontColor('#999999')
+        .fontColor($r('app.color.text_tertiary'))
         .width('100%')
         .margin({ top: 8 })
         .textAlign(TextAlign.Start)
@@ -209,7 +209,7 @@ export struct DynamicItemView {
     } else {
       Text('暂不支持的内容类型')
         .fontSize(13)
-        .fontColor('#999999')
+        .fontColor($r('app.color.text_tertiary'))
         .width('100%')
         .margin({ top: 8 })
         .textAlign(TextAlign.Start)
@@ -225,7 +225,7 @@ export struct DynamicItemView {
           .height(16)
         Text(this.statText('forward'))
           .fontSize(11)
-          .fontColor('#999999')
+          .fontColor($r('app.color.text_tertiary'))
           .margin({ left: 3 })
       }
       .layoutWeight(1)
@@ -237,7 +237,7 @@ export struct DynamicItemView {
           .height(16)
         Text(this.statText('comment'))
           .fontSize(11)
-          .fontColor('#999999')
+          .fontColor($r('app.color.text_tertiary'))
           .margin({ left: 3 })
       }
       .layoutWeight(1)
@@ -249,7 +249,7 @@ export struct DynamicItemView {
           .height(16)
         Text(this.statText('like'))
           .fontSize(11)
-          .fontColor('#999999')
+          .fontColor($r('app.color.text_tertiary'))
           .margin({ left: 3 })
       }
       .layoutWeight(1)
@@ -258,7 +258,7 @@ export struct DynamicItemView {
     .width('100%')
     .margin({ top: 8 })
     .padding({ top: 8 })
-    .border({ width: { top: 0.5 }, color: '#f0f0f0' })
+    .border({ width: { top: 0.5 }, color: $r('app.color.divider') })
   }
 
   private author(): ModuleAuthor | undefined {

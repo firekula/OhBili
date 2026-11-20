@@ -50,14 +50,14 @@ export struct HomeView {
       Text(title)
         .maxLines(1)
         .fontSize(16)
-        .fontColor(this.currentIndex === targetIndex ? '#1698CE' : '#6B6B6B')
+        .fontColor(this.currentIndex === targetIndex ? '#1698CE' : $r('app.color.tab_inactive'))
         .border({width: {bottom: this.currentIndex === targetIndex ? 2 : 0}, color: '#1698CE'})
         .height('100%')
     }
     .width('100%')
     .height('100%')
     .justifyContent(FlexAlign.Center)
-    .border({width: {bottom: 0.5}, color: '#cccccc'})
+    .border({width: {bottom: 0.5}, color: $r('app.color.border')})
   }
 
   build() {

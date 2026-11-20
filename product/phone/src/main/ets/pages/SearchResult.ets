@@ -69,7 +69,11 @@ struct SearchResultPage {
           // 必传项，需绑定传入主体布局内的列表或宫格组件
           scroller: this.scroller,
           // 必传项，自定义主体布局，内部有列表或宫格组件
-          customList: this.getListView,
+          // 注意：@Builder 按引用传给子组件 @BuilderParam 后，构建器内 this 指向子组件，
+          // this.isRateLimited 会读到 undefined；用箭头函数包裹转发使 this 保持为本组件
+          customList: (): void => {
+            this.getListView();
+          },
           // 可选项，下拉刷新回调
           onRefresh: () => {
             return new Promise<string>((resolve, reject) => {
@@ -114,10 +118,10 @@ struct SearchResultPage {
           Column({ space: 8 }) {
             Text(this.isRateLimited ? '请求过于频繁，请稍后再试' : '无结果')
               .fontSize(15)
-              .fontColor('#ff999999')
+              .fontColor($r('app.color.text_tertiary'))
             Text('下拉刷新重试')
               .fontSize(12)
-              .fontColor('#ffbbbbbb')
+              .fontColor($r('app.color.placeholder'))
           }
           .width('100%')
           .height(240)
@@ -130,10 +134,10 @@ struct SearchResultPage {
         }
       }, item => item.bvid)
     }
-    .backgroundColor('#ffffff')
+    .backgroundColor($r('app.color.surface'))
     .width('100%')
     .padding({ left: 16, right: 16 })
-    .divider({ strokeWidth: 1, color: '#ffeeeeee' })
+    .divider({ strokeWidth: 1, color: $r('app.color.divider') })
     .edgeEffect(EdgeEffect.None)
   }
 

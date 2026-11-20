@@ -20,7 +20,7 @@ export struct SettingSwitchItem {
 
   build() {
     Row() {
-      Text(this.title).fontSize(14).fontColor('#333333')
+      Text(this.title).fontSize(14).fontColor($r('app.color.text_primary'))
       Blank()
       Toggle({ type: ToggleType.Switch, isOn: this.value == '1' }).onChange(this.callback)
     }.width('100%').height(50)

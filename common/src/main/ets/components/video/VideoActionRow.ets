@@ -34,32 +34,32 @@ export struct VideoActionRow {
 
   build() {
     Row() {
-      this.ActionButton('收藏', this.isFav ? '#fb7299' : '#666666', () => {
+      this.ActionButton('收藏', this.isFav ? '#fb7299' : $r('app.color.text_mid'), () => {
         this.onFavClick();
       })
 
-      this.ActionButton('稍后再看', '#666666', () => {
+      this.ActionButton('稍后再看', $r('app.color.text_mid'), () => {
         this.onWatchLaterClick();
       })
 
-      this.ActionButton('缓存', '#666666', () => {
+      this.ActionButton('缓存', $r('app.color.text_mid'), () => {
         this.onCacheClick();
       })
     }
     .width('100%')
     .justifyContent(FlexAlign.SpaceEvenly)
     .padding({ top: 8, bottom: 8 })
-    .backgroundColor(Color.White)
+    .backgroundColor($r('app.color.surface'))
   }
 
   @Builder
-  private ActionButton(label: string, color: string, onTap: () => void, enabled: boolean = true) {
+  private ActionButton(label: string, color: ResourceColor, onTap: () => void, enabled: boolean = true) {
     Text(label)
       .fontSize(13)
       .fontColor(color)
       .padding({ left: 16, right: 16, top: 8, bottom: 8 })
       .borderRadius(14)
-      .backgroundColor(enabled ? '#f5f5f5' : '#fafafa')
+      .backgroundColor(enabled ? $r('app.color.surface_soft') : $r('app.color.surface_soft'))
       .onClick(() => {
         onTap();
       })
@@ -312,7 +312,7 @@ struct FavFolderDialog {
     Column() {
       Text('选择收藏夹')
         .fontSize(16)
-        .fontColor('#333333')
+        .fontColor($r('app.color.text_primary'))
         .fontWeight(FontWeight.Medium)
         .margin({ top: 16, bottom: 8 })
 
@@ -325,14 +325,14 @@ struct FavFolderDialog {
         }
       } else if (this.loadFailed) {
         Column() {
-          Text('收藏夹加载失败').fontSize(14).fontColor('#888888').margin({ top: 16 })
+          Text('收藏夹加载失败').fontSize(14).fontColor($r('app.color.text_secondary')).margin({ top: 16 })
           Text('重试').fontSize(14).fontColor('#fb7299').padding(8).margin({ top: 4 }).onClick(() => {
             this.loadFolders();
           })
         }
       } else if (this.folders.length == 0) {
         Column() {
-          Text('暂无收藏夹').fontSize(14).fontColor('#888888').margin({ top: 16, bottom: 16 })
+          Text('暂无收藏夹').fontSize(14).fontColor($r('app.color.text_secondary')).margin({ top: 16, bottom: 16 })
         }
       } else {
         Scroll() {
@@ -345,18 +345,18 @@ struct FavFolderDialog {
                   .width(20)
                   .height(20)
                   .borderRadius(10)
-                  .border({ width: 1, color: this.checked[index] ? '#fb7299' : '#cccccc' })
+                  .border({ width: 1, color: this.checked[index] ? '#fb7299' : $r('app.color.border') })
                   .textAlign(TextAlign.Center)
 
                 Column() {
                   Text(folder.title ?? '')
                     .fontSize(14)
-                    .fontColor('#333333')
+                    .fontColor($r('app.color.text_primary'))
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
                   Text(StringUtil.generateCN(folder.media_count ?? 0) + '个内容')
                     .fontSize(11)
-                    .fontColor('#999999')
+                    .fontColor($r('app.color.text_tertiary'))
                     .margin({ top: 2 })
                 }
                 .layoutWeight(1)
@@ -381,7 +381,7 @@ struct FavFolderDialog {
       Row() {
         Text('取消')
           .fontSize(15)
-          .fontColor('#666666')
+          .fontColor($r('app.color.text_mid'))
           .layoutWeight(1)
           .textAlign(TextAlign.Center)
           .padding({ top: 12, bottom: 12 })
@@ -403,7 +403,7 @@ struct FavFolderDialog {
     }
     .width('92%')
     .borderRadius(16)
-    .backgroundColor(Color.White)
+    .backgroundColor($r('app.color.surface'))
     .padding({ bottom: 8 })
   }
 
@@ -508,7 +508,7 @@ struct QualitySelectDialog {
     Column() {
       Text('选择清晰度')
         .fontSize(16)
-        .fontColor('#333333')
+        .fontColor($r('app.color.text_primary'))
         .fontWeight(FontWeight.Medium)
         .margin({ top: 16, bottom: 8 })
 
@@ -521,14 +521,14 @@ struct QualitySelectDialog {
         }
       } else if (this.loadFailed) {
         Column() {
-          Text('清晰度加载失败').fontSize(14).fontColor('#888888').margin({ top: 16 })
+          Text('清晰度加载失败').fontSize(14).fontColor($r('app.color.text_secondary')).margin({ top: 16 })
           Text('重试').fontSize(14).fontColor('#fb7299').padding(8).margin({ top: 4 }).onClick(() => {
             this.loadQualities();
           })
         }
       } else if (this.qualities.length == 0) {
         Column() {
-          Text('暂无可用清晰度').fontSize(14).fontColor('#888888').margin({ top: 16, bottom: 16 })
+          Text('暂无可用清晰度').fontSize(14).fontColor($r('app.color.text_secondary')).margin({ top: 16, bottom: 16 })
         }
       } else {
         Scroll() {
@@ -537,7 +537,7 @@ struct QualitySelectDialog {
               Row() {
                 Text(desc)
                   .fontSize(14)
-                  .fontColor('#333333')
+                  .fontColor($r('app.color.text_primary'))
                   .layoutWeight(1)
                 Text('缓存')
                   .fontSize(12)
@@ -556,7 +556,7 @@ struct QualitySelectDialog {
     }
     .width('100%')
     .borderRadius(12)
-    .backgroundColor(Color.White)
+    .backgroundColor($r('app.color.surface'))
     .padding({ bottom: 16 })
   }
 
