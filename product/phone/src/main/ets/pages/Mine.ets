@@ -22,7 +22,7 @@ export struct MineView {
       UserHeadView()
       UserStateView()
       MineOptView()
-      MoreServerView()
+      MoreServerView({ showMessage: true })
     }.width('100%').height('100%')
     .justifyContent(FlexAlign.Start)
   }

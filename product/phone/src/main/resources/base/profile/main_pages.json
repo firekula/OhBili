@@ -18,6 +18,7 @@
     "pages/FavDetail",
     "pages/WatchLater",
     "pages/OfflineCache",
-    "pages/Bangumi"
+    "pages/Bangumi",
+    "pages/Message"
   ]
 }

@@ -61,6 +61,14 @@ export { BangumiSeasonResponse, BangumiSeason, BangumiRating, BangumiEpisode,
   BangumiUserStatus } from './src/main/ets/model/response/BangumiSeasonResponse'
 export { MyFollowBangumiResponse, MyFollowBangumiData, FollowBangumiItem,
   FollowNewEp } from './src/main/ets/model/response/MyFollowBangumiResponse'
+export { MsgFeedReplyResponse, MsgFeedReplyData, MsgFeedCursor, MsgFeedUser,
+  MsgFeedReplyItem, MsgFeedReplyItemDetail } from './src/main/ets/model/response/MsgFeedReplyResponse'
+export { MsgFeedAtResponse, MsgFeedAtData, MsgFeedAtItem,
+  MsgFeedAtItemDetail } from './src/main/ets/model/response/MsgFeedAtResponse'
+export { MsgFeedLikeResponse, MsgFeedLikeData, MsgFeedLikeItem,
+  MsgFeedLikeItemDetail } from './src/main/ets/model/response/MsgFeedLikeResponse'
+export { MsgFeedUnreadResponse, MsgFeedUnreadData } from './src/main/ets/model/response/MsgFeedUnreadResponse'
+export { SysNoticeResponse, SysNoticeData, SysNoticeItem } from './src/main/ets/model/response/SysNoticeResponse'
 
 export { DataService } from './src/main/ets/network/Api'
 export { ApiConstants } from './src/main/ets/network/ApiConstants'
@@ -75,6 +83,7 @@ export { SettingTextItem } from './src/main/ets/components/base/SettingTextItem'
 
 export { MineOptView } from './src/main/ets/components/mine/MineOpt'
 export { MoreServerView } from './src/main/ets/components/mine/MoreServer'
+export { MessageFeedDataSource, MessageEntry } from './src/main/ets/components/message/MessageFeedDataSource'
 export { UserHeadView } from './src/main/ets/components/mine/UserHead'
 export { UserStateView } from './src/main/ets/components/mine/UserState'
 

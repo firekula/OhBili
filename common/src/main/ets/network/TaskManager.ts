@@ -52,6 +52,11 @@ import { CoinCountResponse } from '../model/response/CoinCountResponse';
 import { BangumiTimelineResponse } from '../model/response/BangumiTimelineResponse';
 import { BangumiSeasonResponse } from '../model/response/BangumiSeasonResponse';
 import { MyFollowBangumiResponse } from '../model/response/MyFollowBangumiResponse';
+import { MsgFeedReplyResponse } from '../model/response/MsgFeedReplyResponse';
+import { MsgFeedAtResponse } from '../model/response/MsgFeedAtResponse';
+import { MsgFeedLikeResponse } from '../model/response/MsgFeedLikeResponse';
+import { MsgFeedUnreadResponse } from '../model/response/MsgFeedUnreadResponse';
+import { SysNoticeResponse } from '../model/response/SysNoticeResponse';
 
 export class TaskManager {
   public static getInstance(): TaskManager {
@@ -413,6 +418,40 @@ export class TaskManager {
                                ps: number): Promise<ApiResponse<MyFollowBangumiResponse>> {
     var task = new taskPool.Task(requestMyFollowBangumiTask, cookie, vmid, type, pn, ps);
     var response = await taskPool.execute(task) as ApiResponse<MyFollowBangumiResponse>;
+    return response;
+  }
+
+  async requestMsgFeedReply(cookie: string, id: number,
+                            replyTime: string): Promise<ApiResponse<MsgFeedReplyResponse>> {
+    var task = new taskPool.Task(requestMsgFeedReplyTask, cookie, id, replyTime);
+    var response = await taskPool.execute(task) as ApiResponse<MsgFeedReplyResponse>;
+    return response;
+  }
+
+  async requestMsgFeedAt(cookie: string, id: number,
+                         atTime: string): Promise<ApiResponse<MsgFeedAtResponse>> {
+    var task = new taskPool.Task(requestMsgFeedAtTask, cookie, id, atTime);
+    var response = await taskPool.execute(task) as ApiResponse<MsgFeedAtResponse>;
+    return response;
+  }
+
+  async requestMsgFeedLike(cookie: string, id: number,
+                           likeTime: string): Promise<ApiResponse<MsgFeedLikeResponse>> {
+    var task = new taskPool.Task(requestMsgFeedLikeTask, cookie, id, likeTime);
+    var response = await taskPool.execute(task) as ApiResponse<MsgFeedLikeResponse>;
+    return response;
+  }
+
+  async requestMsgFeedUnread(cookie: string): Promise<ApiResponse<MsgFeedUnreadResponse>> {
+    var task = new taskPool.Task(requestMsgFeedUnreadTask, cookie);
+    var response = await taskPool.execute(task) as ApiResponse<MsgFeedUnreadResponse>;
+    return response;
+  }
+
+  async requestSysNotices(cookie: string, pageSize: number,
+                          cursor: string): Promise<ApiResponse<SysNoticeResponse>> {
+    var task = new taskPool.Task(requestSysNoticesTask, cookie, pageSize, cursor);
+    var response = await taskPool.execute(task) as ApiResponse<SysNoticeResponse>;
     return response;
   }
 }
@@ -1577,6 +1616,115 @@ async function requestMyFollowBangumiTask(cookie: string, vmid: number, type: nu
       .build(DataService);
     let resp: Response<MyFollowBangumiResponse> = await dataService.getMyFollowBangumi(cookie,
       vmid, type, pn, ps);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestMsgFeedReplyTask(cookie: string, id: number,
+                                       replyTime: string): Promise<ApiResponse<MsgFeedReplyResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: MsgFeedReplyResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<MsgFeedReplyResponse> = await dataService.getMsgFeedReply(cookie,
+      0, 'web', 'web', id, replyTime);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestMsgFeedAtTask(cookie: string, id: number,
+                                    atTime: string): Promise<ApiResponse<MsgFeedAtResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: MsgFeedAtResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<MsgFeedAtResponse> = await dataService.getMsgFeedAt(cookie,
+      0, 'web', 'web', id, atTime);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestMsgFeedLikeTask(cookie: string, id: number,
+                                      likeTime: string): Promise<ApiResponse<MsgFeedLikeResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: MsgFeedLikeResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<MsgFeedLikeResponse> = await dataService.getMsgFeedLike(cookie,
+      0, 'web', 'web', id, likeTime);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestMsgFeedUnreadTask(cookie: string): Promise<ApiResponse<MsgFeedUnreadResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: MsgFeedUnreadResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<MsgFeedUnreadResponse> = await dataService.getMsgFeedUnread(cookie, 0, 'web');
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestSysNoticesTask(cookie: string, pageSize: number,
+                                     cursor: string): Promise<ApiResponse<SysNoticeResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: SysNoticeResponse;
+  let message: string = "";
+  try {
+    // 系统通知分域：message.bilibili.com
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.messageBase)
+      .build(DataService);
+    let resp: Response<SysNoticeResponse> = await dataService.getSysNoticeList(cookie,
+      pageSize, cursor);
     code = resp.code();
     message = resp.message();
     result = resp.result;

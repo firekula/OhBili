@@ -61,6 +61,11 @@ import { CoinCountResponse } from '../model/response/CoinCountResponse';
 import { BangumiTimelineResponse } from '../model/response/BangumiTimelineResponse';
 import { BangumiSeasonResponse } from '../model/response/BangumiSeasonResponse';
 import { MyFollowBangumiResponse } from '../model/response/MyFollowBangumiResponse';
+import { MsgFeedReplyResponse } from '../model/response/MsgFeedReplyResponse';
+import { MsgFeedAtResponse } from '../model/response/MsgFeedAtResponse';
+import { MsgFeedLikeResponse } from '../model/response/MsgFeedLikeResponse';
+import { MsgFeedUnreadResponse } from '../model/response/MsgFeedUnreadResponse';
+import { SysNoticeResponse } from '../model/response/SysNoticeResponse';
 
 @BasePath("/")
 export class DataService extends BaseService {
@@ -891,5 +896,82 @@ export class DataService extends BaseService {
                            @Query('ps') ps: number):
     Promise<Response<MyFollowBangumiResponse>> {
     return <Response<MyFollowBangumiResponse>>{};
+  };
+
+  /**
+   * 回复我的消息（需登录 Cookie）
+   * @param id 游标（首页 0，翻页传上一页最后一条 id）
+   * @param replyTime 回复时间游标（首页空串）
+   */
+  @GET("x/msgfeed/reply")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async getMsgFeedReply(@Header('Cookie') cookie: string,
+                        @Query('build') build: number,
+                        @Query('mobi_app') mobiApp: string,
+                        @Query('platform') platform: string,
+                        @Query('id') id: number,
+                        @Query('reply_time') replyTime: string):
+    Promise<Response<MsgFeedReplyResponse>> {
+    return <Response<MsgFeedReplyResponse>>{};
+  };
+
+  /**
+   * @我的消息（需登录 Cookie）
+   * @param id 游标（首页 0，翻页传上一页最后一条 id）
+   * @param atTime @时间游标（首页空串）
+   */
+  @GET("x/msgfeed/at")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async getMsgFeedAt(@Header('Cookie') cookie: string,
+                     @Query('build') build: number,
+                     @Query('mobi_app') mobiApp: string,
+                     @Query('platform') platform: string,
+                     @Query('id') id: number,
+                     @Query('at_time') atTime: string):
+    Promise<Response<MsgFeedAtResponse>> {
+    return <Response<MsgFeedAtResponse>>{};
+  };
+
+  /**
+   * 收到的赞消息（需登录 Cookie）
+   * @param id 游标（首页 0，翻页传上一页最后一条 id）
+   * @param likeTime 点赞时间游标（首页空串）
+   */
+  @GET("x/msgfeed/like")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async getMsgFeedLike(@Header('Cookie') cookie: string,
+                       @Query('build') build: number,
+                       @Query('mobi_app') mobiApp: string,
+                       @Query('platform') platform: string,
+                       @Query('id') id: number,
+                       @Query('like_time') likeTime: string):
+    Promise<Response<MsgFeedLikeResponse>> {
+    return <Response<MsgFeedLikeResponse>>{};
+  };
+
+  /**
+   * 消息未读数（需登录 Cookie）：data { reply, at, like, sys }
+   */
+  @GET("x/msgfeed/unread")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async getMsgFeedUnread(@Header('Cookie') cookie: string,
+                         @Query('build') build: number,
+                         @Query('mobi_app') mobiApp: string):
+    Promise<Response<MsgFeedUnreadResponse>> {
+    return <Response<MsgFeedUnreadResponse>>{};
+  };
+
+  /**
+   * 系统通知（message.bilibili.com 分域，需登录 Cookie）
+   * @param pageSize 每页条数
+   * @param cursor 翻页游标（首页空串）
+   */
+  @GET("x/sys-msg/query_notify_list")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.messageBase })
+  async getSysNoticeList(@Header('Cookie') cookie: string,
+                         @Query('page_size') pageSize: number,
+                         @Query('cursor') cursor: string):
+    Promise<Response<SysNoticeResponse>> {
+    return <Response<SysNoticeResponse>>{};
   };
 }

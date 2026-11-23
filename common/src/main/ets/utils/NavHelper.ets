@@ -133,4 +133,17 @@ export class NavHelper {
         BLog.e("NavHelper goBangumi err=" + error.code + ", msg=" + error.message);
       });
   }
+
+  /**
+   * 进入消息中心页（仅 phone 生效）
+   */
+  static goMessage(): void {
+    if (deviceInfo.deviceType !== 'phone') {
+      BLog.i("NavHelper goMessage skip, deviceType=" + deviceInfo.deviceType);
+      return;
+    }
+    router.pushUrl({ url: 'pages/Message' }).catch((error: BusinessError) => {
+      BLog.e("NavHelper goMessage err=" + error.code + ", msg=" + error.message);
+    });
+  }
 }

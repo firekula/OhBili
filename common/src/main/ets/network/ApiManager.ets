@@ -49,6 +49,11 @@ import { CoinCount } from '../model/response/CoinCountResponse';
 import { BangumiTimelineDay, BangumiTimelineResponse } from '../model/response/BangumiTimelineResponse';
 import { BangumiSeason, BangumiSeasonResponse } from '../model/response/BangumiSeasonResponse';
 import { MyFollowBangumiResponse } from '../model/response/MyFollowBangumiResponse';
+import { MsgFeedReplyResponse } from '../model/response/MsgFeedReplyResponse';
+import { MsgFeedAtResponse } from '../model/response/MsgFeedAtResponse';
+import { MsgFeedLikeResponse } from '../model/response/MsgFeedLikeResponse';
+import { MsgFeedUnreadData, MsgFeedUnreadResponse } from '../model/response/MsgFeedUnreadResponse';
+import { SysNoticeResponse } from '../model/response/SysNoticeResponse';
 
 export class ApiManager {
   /** 最近一次搜索请求是否被风控（-412 等），供搜索结果页区分"无结果"与"请求过于频繁" */
@@ -1232,5 +1237,68 @@ export class ApiManager {
     BLog.d("requestMyFollowBangumi vmid=" + vmid + ", type=" + type + ", pn=" + pn);
     let cookie: string = LoginHelper.buildCookieHeader();
     return await TaskManager.getInstance().requestMyFollowBangumi(cookie, vmid, type, pn, 30);
+  }
+
+  /**
+   * 回复我的消息（需登录，游标分页）
+   * @param id 游标 id（首页 0）
+   * @param replyTime 回复时间游标（首页空串）
+   */
+  async requestMsgFeedReply(id: number, replyTime: string):
+    Promise<ApiResponse<MsgFeedReplyResponse>> {
+    BLog.d("requestMsgFeedReply id=" + id);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    return await TaskManager.getInstance().requestMsgFeedReply(cookie, id, replyTime);
+  }
+
+  /**
+   * @我的消息（需登录，游标分页）
+   * @param id 游标 id（首页 0）
+   * @param atTime @时间游标（首页空串）
+   */
+  async requestMsgFeedAt(id: number, atTime: string):
+    Promise<ApiResponse<MsgFeedAtResponse>> {
+    BLog.d("requestMsgFeedAt id=" + id);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    return await TaskManager.getInstance().requestMsgFeedAt(cookie, id, atTime);
+  }
+
+  /**
+   * 收到的赞消息（需登录，游标分页）
+   * @param id 游标 id（首页 0）
+   * @param likeTime 点赞时间游标（首页空串）
+   */
+  async requestMsgFeedLike(id: number, likeTime: string):
+    Promise<ApiResponse<MsgFeedLikeResponse>> {
+    BLog.d("requestMsgFeedLike id=" + id);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    return await TaskManager.getInstance().requestMsgFeedLike(cookie, id, likeTime);
+  }
+
+  /**
+   * 消息未读数（需登录）：{ reply, at, like, sys }，无数据返回 null
+   */
+  async requestMsgFeedUnread(): Promise<MsgFeedUnreadData | null> {
+    BLog.d("requestMsgFeedUnread");
+    let cookie: string = LoginHelper.buildCookieHeader();
+    let response = await TaskManager.getInstance().requestMsgFeedUnread(cookie);
+    if (response.code == -1) {
+      BLog.e("requestMsgFeedUnread err=" + response.message);
+      return null;
+    }
+    if (response.result == null || response.result.code != 0 || response.result.data == null) {
+      return null;
+    }
+    return response.result.data;
+  }
+
+  /**
+   * 系统通知（message.bilibili.com 分域，需登录）
+   * @param cursor 翻页游标（首页空串）
+   */
+  async requestSysNotices(cursor: string): Promise<ApiResponse<SysNoticeResponse>> {
+    BLog.d("requestSysNotices cursor=" + cursor);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    return await TaskManager.getInstance().requestSysNotices(cookie, 20, cursor);
   }
 }

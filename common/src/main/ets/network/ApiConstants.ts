@@ -24,6 +24,9 @@ export class ApiConstants {
 
     static loginBase: string = "https://passport.bilibili.com";
 
+    /** 系统通知分域（x/sys-msg/query_notify_list） */
+    static messageBase: string = "https://message.bilibili.com";
+
     static itemNum: number = 24;
 
     /** 热门列表分页大小（对齐 B 站网页版热门页） */

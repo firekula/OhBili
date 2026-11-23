@@ -139,6 +139,10 @@
     {
       "name": "unit_million",
       "value": "M"
+    },
+    {
+      "name": "msg_center",
+      "value": "Message center"
     }
   ]
 }

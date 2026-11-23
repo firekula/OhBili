@@ -143,6 +143,10 @@
     {
       "name": "unit_million",
       "value": "万"
+    },
+    {
+      "name": "msg_center",
+      "value": "消息中心"
     }
   ]
 }
