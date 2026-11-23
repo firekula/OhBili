@@ -49,6 +49,9 @@ import { WatchLaterResponse } from '../model/response/WatchLaterResponse';
 import { RelationStatResponse } from '../model/response/RelationStatResponse';
 import { HasLikeResponse } from '../model/response/HasLikeResponse';
 import { CoinCountResponse } from '../model/response/CoinCountResponse';
+import { BangumiTimelineResponse } from '../model/response/BangumiTimelineResponse';
+import { BangumiSeasonResponse } from '../model/response/BangumiSeasonResponse';
+import { MyFollowBangumiResponse } from '../model/response/MyFollowBangumiResponse';
 
 export class TaskManager {
   public static getInstance(): TaskManager {
@@ -362,6 +365,54 @@ export class TaskManager {
                     csrf: string): Promise<ApiResponse<EmptyResponse>> {
     var task = new taskPool.Task(postDanmakuTask, cookie, oid, aid, msg, progress, mode, csrf);
     var response = await taskPool.execute(task) as ApiResponse<EmptyResponse>;
+    return response;
+  }
+
+  async requestBangumiTimeline(cookie: string, types: number): Promise<ApiResponse<BangumiTimelineResponse>> {
+    var task = new taskPool.Task(requestBangumiTimelineTask, cookie, types);
+    var response = await taskPool.execute(task) as ApiResponse<BangumiTimelineResponse>;
+    return response;
+  }
+
+  async requestBangumiSeasonBySeasonId(cookie: string,
+                                       seasonId: number): Promise<ApiResponse<BangumiSeasonResponse>> {
+    var task = new taskPool.Task(requestBangumiSeasonBySeasonIdTask, cookie, seasonId);
+    var response = await taskPool.execute(task) as ApiResponse<BangumiSeasonResponse>;
+    return response;
+  }
+
+  async requestBangumiSeasonByEpId(cookie: string,
+                                   epId: number): Promise<ApiResponse<BangumiSeasonResponse>> {
+    var task = new taskPool.Task(requestBangumiSeasonByEpIdTask, cookie, epId);
+    var response = await taskPool.execute(task) as ApiResponse<BangumiSeasonResponse>;
+    return response;
+  }
+
+  async requestBangumiPlayUrl(cookie: string, epId: number, cid: number,
+                              qn: number): Promise<ApiResponse<PlayUrlResponse>> {
+    var task = new taskPool.Task(requestBangumiPlayUrlTask, cookie, epId, cid, qn);
+    var response = await taskPool.execute(task) as ApiResponse<PlayUrlResponse>;
+    return response;
+  }
+
+  async followBangumi(cookie: string, seasonId: number,
+                      csrf: string): Promise<ApiResponse<EmptyResponse>> {
+    var task = new taskPool.Task(followBangumiTask, cookie, seasonId, csrf);
+    var response = await taskPool.execute(task) as ApiResponse<EmptyResponse>;
+    return response;
+  }
+
+  async unfollowBangumi(cookie: string, seasonId: number,
+                        csrf: string): Promise<ApiResponse<EmptyResponse>> {
+    var task = new taskPool.Task(unfollowBangumiTask, cookie, seasonId, csrf);
+    var response = await taskPool.execute(task) as ApiResponse<EmptyResponse>;
+    return response;
+  }
+
+  async requestMyFollowBangumi(cookie: string, vmid: number, type: number, pn: number,
+                               ps: number): Promise<ApiResponse<MyFollowBangumiResponse>> {
+    var task = new taskPool.Task(requestMyFollowBangumiTask, cookie, vmid, type, pn, ps);
+    var response = await taskPool.execute(task) as ApiResponse<MyFollowBangumiResponse>;
     return response;
   }
 }
@@ -1373,6 +1424,159 @@ async function postDanmakuTask(cookie: string, oid: number, aid: number, msg: st
     // 固定参数：白色(16777215)/字号 25/pool 0/plat 1
     let resp: Response<EmptyResponse> = await dataService.postDanmaku(cookie, oid, aid, 1,
       encodeURIComponent(msg), Math.floor(progress), 16777215, 25, mode, 0, 1, csrf);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestBangumiTimelineTask(cookie: string, types: number):
+  Promise<ApiResponse<BangumiTimelineResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: BangumiTimelineResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<BangumiTimelineResponse> = await dataService.getBangumiTimeline(cookie,
+      types, 3, 7);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestBangumiSeasonBySeasonIdTask(cookie: string, seasonId: number):
+  Promise<ApiResponse<BangumiSeasonResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: BangumiSeasonResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<BangumiSeasonResponse> = await dataService.getBangumiSeasonBySeasonId(cookie,
+      seasonId);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestBangumiSeasonByEpIdTask(cookie: string, epId: number):
+  Promise<ApiResponse<BangumiSeasonResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: BangumiSeasonResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<BangumiSeasonResponse> = await dataService.getBangumiSeasonByEpId(cookie,
+      epId);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestBangumiPlayUrlTask(cookie: string, epId: number, cid: number,
+                                         qn: number): Promise<ApiResponse<PlayUrlResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: PlayUrlResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    // legacy html5/durl 链路：platform=html5&high_quality=1&fnval=0&fourk=1&try_look=1
+    let resp: Response<PlayUrlResponse> = await dataService.getBangumiPlayUrl(cookie, epId,
+      cid, qn, 'html5', 1, 0, 1, 1);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function followBangumiTask(cookie: string, seasonId: number,
+                                 csrf: string): Promise<ApiResponse<EmptyResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: EmptyResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<EmptyResponse> = await dataService.followBangumi(cookie, seasonId, csrf);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function unfollowBangumiTask(cookie: string, seasonId: number,
+                                   csrf: string): Promise<ApiResponse<EmptyResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: EmptyResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<EmptyResponse> = await dataService.unfollowBangumi(cookie, seasonId, csrf);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestMyFollowBangumiTask(cookie: string, vmid: number, type: number, pn: number,
+                                          ps: number): Promise<ApiResponse<MyFollowBangumiResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: MyFollowBangumiResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<MyFollowBangumiResponse> = await dataService.getMyFollowBangumi(cookie,
+      vmid, type, pn, ps);
     code = resp.code();
     message = resp.message();
     result = resp.result;

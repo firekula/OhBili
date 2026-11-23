@@ -46,6 +46,9 @@ import { FavMedia, FavResourceResult } from '../model/response/FavResourceRespon
 import { WatchLaterResult } from '../model/response/WatchLaterResponse';
 import { RelationStatData } from '../model/response/RelationStatResponse';
 import { CoinCount } from '../model/response/CoinCountResponse';
+import { BangumiTimelineDay, BangumiTimelineResponse } from '../model/response/BangumiTimelineResponse';
+import { BangumiSeason, BangumiSeasonResponse } from '../model/response/BangumiSeasonResponse';
+import { MyFollowBangumiResponse } from '../model/response/MyFollowBangumiResponse';
 
 export class ApiManager {
   /** 最近一次搜索请求是否被风控（-412 等），供搜索结果页区分"无结果"与"请求过于频繁" */
@@ -1126,5 +1129,108 @@ export class ApiManager {
     }
     BLog.e("sendDanmaku biz err, code=" + response.result.code + ", msg=" + response.result.message);
     return response.result.code;
+  }
+
+  /**
+   * 新番时间表（番剧/国创按天分组；before=3/after=7 固定窗口）
+   * @param types 1=番剧 4=国创
+   */
+  async requestBangumiTimeline(types: number): Promise<BangumiTimelineDay[] | null> {
+    BLog.d("requestBangumiTimeline types=" + types);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    let response = await TaskManager.getInstance().requestBangumiTimeline(cookie, types);
+    if (response.code == -1) {
+      BLog.e("requestBangumiTimeline err=" + response.message);
+      return null;
+    }
+    if (response.result == null) {
+      return null;
+    }
+    BLog.d("requestBangumiTimeline biz code=" + response.result.code);
+    if (response.result.code != 0 || response.result.result == null) {
+      return null;
+    }
+    return response.result.result;
+  }
+
+  /**
+   * 番剧详情（seasonId/epId 二选一，另一个传 0）
+   * @return 含业务码的完整响应（-404 不存在等由调用方区分）
+   */
+  async requestBangumiSeason(seasonId: number, epId: number): Promise<ApiResponse<BangumiSeasonResponse>> {
+    BLog.d("requestBangumiSeason seasonId=" + seasonId + ", epId=" + epId);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    if (seasonId > 0) {
+      return await TaskManager.getInstance().requestBangumiSeasonBySeasonId(cookie, seasonId);
+    }
+    return await TaskManager.getInstance().requestBangumiSeasonByEpId(cookie, epId);
+  }
+
+  /**
+   * 番剧播放地址（legacy html5/durl 链路，与普通视频播放同构）
+   * @return 含业务码的完整响应（-10403 需大会员/-403 区域限制等由调用方区分）
+   */
+  async requestBangumiPlayUrl(epId: number, cid: number, qn: number): Promise<ApiResponse<PlayUrlResponse>> {
+    BLog.d("requestBangumiPlayUrl epId=" + epId + ", cid=" + cid + ", qn=" + qn);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    return await TaskManager.getInstance().requestBangumiPlayUrl(cookie, epId, cid, qn);
+  }
+
+  /**
+   * 追番（csrf 鉴权）
+   * @return 0=成功 其余=业务失败码
+   */
+  async followBangumi(seasonId: number): Promise<number> {
+    BLog.d("followBangumi seasonId=" + seasonId);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    let csrf: string = ApiManager.getCsrf();
+    let response = await TaskManager.getInstance().followBangumi(cookie, seasonId, csrf);
+    if (response.code == -1) {
+      BLog.e("followBangumi err=" + response.message);
+      return -1;
+    }
+    if (response.result == null) {
+      return -1;
+    }
+    if (response.result.code == 0) {
+      return 0;
+    }
+    BLog.e("followBangumi biz err, code=" + response.result.code + ", msg=" + response.result.message);
+    return response.result.code;
+  }
+
+  /**
+   * 取消追番（csrf 鉴权）
+   * @return 0=成功 其余=业务失败码
+   */
+  async unfollowBangumi(seasonId: number): Promise<number> {
+    BLog.d("unfollowBangumi seasonId=" + seasonId);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    let csrf: string = ApiManager.getCsrf();
+    let response = await TaskManager.getInstance().unfollowBangumi(cookie, seasonId, csrf);
+    if (response.code == -1) {
+      BLog.e("unfollowBangumi err=" + response.message);
+      return -1;
+    }
+    if (response.result == null) {
+      return -1;
+    }
+    if (response.result.code == 0) {
+      return 0;
+    }
+    BLog.e("unfollowBangumi biz err, code=" + response.result.code + ", msg=" + response.result.message);
+    return response.result.code;
+  }
+
+  /**
+   * 我的追番/追剧列表（需登录）
+   * @param vmid 用户 mid
+   * @param type 1=追番 2=追剧
+   */
+  async requestMyFollowBangumi(vmid: number, type: number, pn: number):
+    Promise<ApiResponse<MyFollowBangumiResponse>> {
+    BLog.d("requestMyFollowBangumi vmid=" + vmid + ", type=" + type + ", pn=" + pn);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    return await TaskManager.getInstance().requestMyFollowBangumi(cookie, vmid, type, pn, 30);
   }
 }

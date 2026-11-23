@@ -55,6 +55,13 @@ export { WatchLaterResponse, WatchLaterData, WatchLaterItem, WatchLaterOwner,
   WatchLaterResult, isWatchLaterItemInvalid } from './src/main/ets/model/response/WatchLaterResponse'
 export { CacheTask, CacheTaskStatus } from './src/main/ets/model/CacheTask'
 
+export { BangumiTimelineResponse, BangumiTimelineDay, BangumiTimelineEpisode } from './src/main/ets/model/response/BangumiTimelineResponse'
+export { BangumiSeasonResponse, BangumiSeason, BangumiRating, BangumiEpisode,
+  BangumiSection, BangumiSeasonBrief, BangumiSeasonStat,
+  BangumiUserStatus } from './src/main/ets/model/response/BangumiSeasonResponse'
+export { MyFollowBangumiResponse, MyFollowBangumiData, FollowBangumiItem,
+  FollowNewEp } from './src/main/ets/model/response/MyFollowBangumiResponse'
+
 export { DataService } from './src/main/ets/network/Api'
 export { ApiConstants } from './src/main/ets/network/ApiConstants'
 export { ApiManager } from './src/main/ets/network/ApiManager'

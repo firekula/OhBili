@@ -113,4 +113,24 @@ export class NavHelper {
       BLog.e("NavHelper goOfflineCache err=" + error.code + ", msg=" + error.message);
     });
   }
+
+  /**
+   * 进入番剧详情页（仅 phone 生效）
+   * @param seasonId 番剧 season_id
+   * @param epId 预选集 ep_id（0=默认第一集）
+   */
+  static goBangumi(seasonId: number, epId: number): void {
+    if (deviceInfo.deviceType !== 'phone') {
+      BLog.i("NavHelper goBangumi skip, deviceType=" + deviceInfo.deviceType);
+      return;
+    }
+    if (seasonId == null || seasonId <= 0) {
+      BLog.i("NavHelper goBangumi skip, invalid seasonId");
+      return;
+    }
+    router.pushUrl({ url: 'pages/Bangumi', params: { seasonId: seasonId, epId: epId } })
+      .catch((error: BusinessError) => {
+        BLog.e("NavHelper goBangumi err=" + error.code + ", msg=" + error.message);
+      });
+  }
 }

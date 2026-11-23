@@ -58,6 +58,9 @@ import { FavResourceResponse } from '../model/response/FavResourceResponse';
 import { WatchLaterResponse } from '../model/response/WatchLaterResponse';
 import { HasLikeResponse } from '../model/response/HasLikeResponse';
 import { CoinCountResponse } from '../model/response/CoinCountResponse';
+import { BangumiTimelineResponse } from '../model/response/BangumiTimelineResponse';
+import { BangumiSeasonResponse } from '../model/response/BangumiSeasonResponse';
+import { MyFollowBangumiResponse } from '../model/response/MyFollowBangumiResponse';
 
 @BasePath("/")
 export class DataService extends BaseService {
@@ -789,5 +792,104 @@ export class DataService extends BaseService {
                     @Query('csrf') csrf: string):
     Promise<Response<EmptyResponse>> {
     return <Response<EmptyResponse>>{};
+  };
+
+  /**
+   * 新番时间表（番剧/国创按天分组）
+   * @param types 1=番剧 4=国创
+   * @param before 往前天数
+   * @param after 往后天数
+   */
+  @GET("pgc/web/timeline")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async getBangumiTimeline(@Header('Cookie') cookie: string,
+                           @Query('types') types: number,
+                           @Query('before') before: number,
+                           @Query('after') after: number):
+    Promise<Response<BangumiTimelineResponse>> {
+    return <Response<BangumiTimelineResponse>>{};
+  };
+
+  /**
+   * 番剧详情（按 season_id 查询）
+   */
+  @GET("pgc/view/web/season")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async getBangumiSeasonBySeasonId(@Header('Cookie') cookie: string,
+                                   @Query('season_id') seasonId: number):
+    Promise<Response<BangumiSeasonResponse>> {
+    return <Response<BangumiSeasonResponse>>{};
+  };
+
+  /**
+   * 番剧详情（按 ep_id 查询，跳转集直达）
+   */
+  @GET("pgc/view/web/season")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async getBangumiSeasonByEpId(@Header('Cookie') cookie: string,
+                               @Query('ep_id') epId: number):
+    Promise<Response<BangumiSeasonResponse>> {
+    return <Response<BangumiSeasonResponse>>{};
+  };
+
+  /**
+   * 番剧播放地址（legacy html5/durl 链路，与普通视频同构）
+   * 业务码：-10403 需大会员、-404 不存在、-403 区域限制
+   */
+  @GET("pgc/player/web/playurl")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async getBangumiPlayUrl(@Header('Cookie') cookie: string,
+                          @Query('ep_id') epId: number,
+                          @Query('cid') cid: number,
+                          @Query('qn') qn: number,
+                          @Query('platform') platform: string,
+                          @Query('high_quality') highQuality: number,
+                          @Query('fnval') fnval: number,
+                          @Query('fourk') fourk: number,
+                          @Query('try_look') tryLook: number):
+    Promise<Response<PlayUrlResponse>> {
+    return <Response<PlayUrlResponse>>{};
+  };
+
+  /**
+   * 追番（POST，csrf 鉴权）
+   */
+  @POST("pgc/web/follow/add")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async followBangumi(@Header('Cookie') cookie: string,
+                      @Query('season_id') seasonId: number,
+                      @Query('csrf') csrf: string):
+    Promise<Response<EmptyResponse>> {
+    return <Response<EmptyResponse>>{};
+  };
+
+  /**
+   * 取消追番（POST，csrf 鉴权）
+   */
+  @POST("pgc/web/follow/del")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async unfollowBangumi(@Header('Cookie') cookie: string,
+                        @Query('season_id') seasonId: number,
+                        @Query('csrf') csrf: string):
+    Promise<Response<EmptyResponse>> {
+    return <Response<EmptyResponse>>{};
+  };
+
+  /**
+   * 我的追番/追剧列表（需登录 Cookie）
+   * @param vmid 用户 mid
+   * @param type 1=追番 2=追剧
+   * @param pn 页码
+   * @param ps 每页条数
+   */
+  @GET("x/space/bangumi/follow/list")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async getMyFollowBangumi(@Header('Cookie') cookie: string,
+                           @Query('vmid') vmid: number,
+                           @Query('type') type: number,
+                           @Query('pn') pn: number,
+                           @Query('ps') ps: number):
+    Promise<Response<MyFollowBangumiResponse>> {
+    return <Response<MyFollowBangumiResponse>>{};
   };
 }

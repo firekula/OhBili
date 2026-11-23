@@ -40,6 +40,7 @@ import { BLog } from '../../utils/BLog';
 import { WindowManager } from '../../utils/WindowManager';
 import { ApiManager } from '../../network/ApiManager';
 import { PlayUrlResponse } from '../../model/response/PlayUrlResponse';
+import { ApiResponse } from '../../model/response/Response';
 import { VideoPartsResponse } from '../../model/response/VideoPartsResponse';
 import { ApiConstants } from '../../network/ApiConstants';
 import { StringUtil } from '../../utils/StringUtil';
@@ -64,6 +65,12 @@ export struct PlayerView {
   private startAt: number = 0;
   /** 本地视频文件绝对路径：非空时跳过 playurl/弹幕请求直接播本地（离线缓存） */
   private localPath: string = '';
+  /** 番剧集 epId（>0 时取流走番剧 playurl 链路；番剧详情页切集时更新触发切集流程） */
+  @Prop @Watch('onBangumiEpChanged') epId: number = -1;
+  /** 番剧切集同步传入的新集 cid（onBangumiEpChanged 中接管 this.cid） */
+  @Prop bangumiCid: number = 0;
+  /** 番剧集 aid（发弹幕接口需要，来自 BangumiEpisode.aid） */
+  @Prop bangumiAid: number = 0;
   @StorageLink('isPortrait') isPortrait: boolean = true
   @Link @Watch('onPageStateUpdated') pageState: string;
   private player: IPlayer = (playerType == "IjkPlayer" ? new IjkPlayer() : new AvPlayer());
@@ -377,6 +384,13 @@ export struct PlayerView {
               // 本地播放：跳过 playurl/弹幕网络请求，直接播本地文件
               this.mPlayUrl = this.localPath;
               this.initPlay(this.localPath);
+            } else if (this.epId > 0) {
+              // 番剧：cid/aid 由详情页传入，取流走番剧 playurl 链路
+              if (this.cid <= 0) {
+                this.getUIContext().getPromptAction().showToast({ message: '视频信息未就绪，请稍后再试' });
+              } else {
+                this.getPlayUrl(this.bvid, this.cid);
+              }
             } else if (this.cid == 0) {
               this.getPageList(this.bvid);
             } else {
@@ -596,6 +610,11 @@ export struct PlayerView {
   }
 
   private getPlayUrl(bvid: string, cid: number) {
+    if (this.epId > 0) {
+      this.getBangumiPlayUrl();
+      return;
+    }
+    // 记忆的清晰度档位（播放器菜单选择过）：走 qn 扩展端点；否则保持原默认链路
     let preferredQn: number = AppStorage.get<number>('ohBiliPlayQn') ?? 0;
     ApiManager.getInstance().requestPlayUrl(bvid, cid, preferredQn > 0 ? preferredQn : undefined)
       .then((resp: PlayUrlResponse) => {
@@ -607,6 +626,97 @@ export struct PlayerView {
       BLog.i("requestPlayUrl Response Data url=" + this.mPlayUrl);
       this.initPlay(this.mPlayUrl);
     });
+  }
+
+  /**
+   * 番剧取流（epId>0 链路）：legacy html5/durl 与普通视频同构；
+   * 业务码 -10403 需大会员 / -403 区域限制 / -404 不存在
+   */
+  private getBangumiPlayUrl() {
+    let preferredQn: number = AppStorage.get<number>('ohBiliPlayQn') ?? 0;
+    ApiManager.getInstance().requestBangumiPlayUrl(this.epId, this.cid, preferredQn)
+      .then((resp: ApiResponse<PlayUrlResponse>) => {
+        if (this.mDestroyed) {
+          return;
+        }
+        let url: string = this.extractBangumiPlayUrl(resp);
+        if (url == '') {
+          return;
+        }
+        this.mPlayUrl = url;
+        BLog.i("requestBangumiPlayUrl Response Data url=" + this.mPlayUrl);
+        this.initPlay(this.mPlayUrl);
+      });
+  }
+
+  /** 校验番剧 playurl 响应：成功返回直链并记录档位表，失败 toast 对应文案并返回空串 */
+  private extractBangumiPlayUrl(resp: ApiResponse<PlayUrlResponse>): string {
+    if (resp.code == -1 || resp.result == null) {
+      this.toastBangumiPlayError(-1);
+      return '';
+    }
+    let body: PlayUrlResponse = resp.result;
+    if (body.code != 0 || body.data == null || body.data.durl == null
+      || body.data.durl.length === 0) {
+      this.toastBangumiPlayError(body.code);
+      return '';
+    }
+    this.updateQualityInfo(body);
+    return body.data.durl[0].url.replace(/\\u0026/g, '&');
+  }
+
+  /** 番剧取流失败提示（业务码映射文案） */
+  private toastBangumiPlayError(code: number): void {
+    let msg: string = '视频加载失败，请稍后重试';
+    if (code == -10403) {
+      msg = '此内容需要大会员，暂无法观看';
+    } else if (code == -403) {
+      msg = '因版权限制，当前地区暂无法观看';
+    } else if (code == -404) {
+      msg = '内容不存在或已下架';
+    }
+    this.getUIContext().getPromptAction().showToast({ message: msg });
+  }
+
+  /**
+   * 番剧切集：详情页更新 epId 触发；接管 cid/aid，进度归零，
+   * 重拉当前集弹幕后走番剧取流并 switchSource 换源起播
+   */
+  private onBangumiEpChanged(): void {
+    if (this.epId <= 0 || this.mDestroyed) {
+      return;
+    }
+    this.cid = this.bangumiCid;
+    this.mAid = this.bangumiAid;
+    this.startAt = 0;
+    this.progressValue = 0;
+    this.currentTime = "00:00";
+    this.totalTime = "00:00";
+    this.danmakuPn = 1;
+    if (this.cid > 0) {
+      this.getDanmaku(true);
+    }
+    this.showLoadIng();
+    let qn: number = AppStorage.get<number>('ohBiliPlayQn') ?? 0;
+    ApiManager.getInstance().requestBangumiPlayUrl(this.epId, this.cid, qn)
+      .then((resp: ApiResponse<PlayUrlResponse>) => {
+        if (this.mDestroyed) {
+          return;
+        }
+        let url: string = this.extractBangumiPlayUrl(resp);
+        if (url == '') {
+          this.hideLoadIng();
+          return;
+        }
+        this.mPlayUrl = url;
+        BLog.i('BiliPlayer switchBangumiEpisode epId=' + this.epId);
+        let headers = new Map([
+          ["User-Agent", ApiConstants.userAgent],
+          ["Connection", "keep-alive"],
+          ["Referer", ApiConstants.biliBase]
+        ]);
+        this.player.switchSource(this.mPlayUrl, headers);
+      });
   }
 
   /** 记录 playurl 响应中的清晰度档位表与当前档位（清晰度菜单数据源） */
@@ -628,6 +738,27 @@ export struct PlayerView {
     }
     let curMs: number = this.player.getCurrentTime();
     this.showLoadIng();
+    if (this.epId > 0) {
+      // 番剧：清晰度切换走番剧 playurl 链路
+      ApiManager.getInstance().requestBangumiPlayUrl(this.epId, this.cid, qn)
+        .then((resp: ApiResponse<PlayUrlResponse>) => {
+          if (this.mDestroyed) {
+            return;
+          }
+          let url: string = this.extractBangumiPlayUrl(resp);
+          if (url == '') {
+            this.hideLoadIng();
+            return;
+          }
+          this.mPlayUrl = url;
+          BLog.i('BiliPlayer switchQuality qn=' + qn + ', resumeMs=' + curMs);
+          // 记忆用户选择的清晰度档位（下次起播优先使用）
+          AppStorage.setOrCreate('ohBiliPlayQn', qn);
+          this.toastQualityFallback(this.mCurrentQn, qn);
+          this.switchSourceResume(curMs);
+        });
+      return;
+    }
     ApiManager.getInstance().requestPlayUrl(this.bvid, this.cid, qn).then((resp: PlayUrlResponse) => {
       if (this.mDestroyed) {
         return;
@@ -643,33 +774,42 @@ export struct PlayerView {
       BLog.i('BiliPlayer switchQuality qn=' + qn + ', resumeMs=' + curMs);
       // 记忆用户选择的清晰度档位（下次起播优先使用）
       AppStorage.setOrCreate('ohBiliPlayQn', qn);
-      this.startAt = curMs / 1000.0;
-      // 服务端回退（如 html5 线路最高 720P）时提示实际档位
-      const gotQn: number = resp.data.quality ?? 0;
-      if (gotQn > 0 && gotQn !== qn) {
-        let gotDesc: string = '';
-        for (let i = 0; i < this.mAcceptQuality.length; i++) {
-          if (this.mAcceptQuality[i] === gotQn) {
-            gotDesc = this.mAcceptDesc.length > i ? this.mAcceptDesc[i] : '';
-            break;
-          }
-        }
-        this.getUIContext().getPromptAction()
-          .showToast({ message: '当前播放线路最高支持' + (gotDesc !== '' ? ' ' + gotDesc : '') + '，已为您切换' });
-      }
-      // 弹幕分段对齐（与进度条 seek 相同规则）
-      if ((this.danmakuPn - 1) * DANMAKU_TIME <= curMs && this.danmakuPn * DANMAKU_TIME > curMs) {
-        // 同段：重设数据源后弹幕计时随播放恢复
-      } else {
-        this.danmakuPn = Math.floor(curMs / DANMAKU_TIME) + 1;
-      }
-      let headers = new Map([
-        ["User-Agent", ApiConstants.userAgent],
-        ["Connection", "keep-alive"],
-        ["Referer", ApiConstants.biliBase]
-      ]);
-      this.player.switchSource(this.mPlayUrl, headers);
+      this.toastQualityFallback(this.mCurrentQn, qn);
+      this.switchSourceResume(curMs);
     });
+  }
+
+  /** 服务端档位回退提示（如 html5 线路最高 720P） */
+  private toastQualityFallback(gotQn: number, wantedQn: number): void {
+    if (gotQn <= 0 || gotQn === wantedQn) {
+      return;
+    }
+    let gotDesc: string = '';
+    for (let i = 0; i < this.mAcceptQuality.length; i++) {
+      if (this.mAcceptQuality[i] === gotQn) {
+        gotDesc = this.mAcceptDesc.length > i ? this.mAcceptDesc[i] : '';
+        break;
+      }
+    }
+    this.getUIContext().getPromptAction()
+      .showToast({ message: '当前播放线路最高支持' + (gotDesc !== '' ? ' ' + gotDesc : '') + '，已为您切换' });
+  }
+
+  /** 记忆播放位置 + 弹幕分段对齐后带请求头切换数据源（切清晰度共用） */
+  private switchSourceResume(curMs: number): void {
+    this.startAt = curMs / 1000.0;
+    // 弹幕分段对齐（与进度条 seek 相同规则）
+    if ((this.danmakuPn - 1) * DANMAKU_TIME <= curMs && this.danmakuPn * DANMAKU_TIME > curMs) {
+      // 同段：重设数据源后弹幕计时随播放恢复
+    } else {
+      this.danmakuPn = Math.floor(curMs / DANMAKU_TIME) + 1;
+    }
+    let headers = new Map([
+      ["User-Agent", ApiConstants.userAgent],
+      ["Connection", "keep-alive"],
+      ["Referer", ApiConstants.biliBase]
+    ]);
+    this.player.switchSource(this.mPlayUrl, headers);
   }
 
   /** 设置倍速并持久化（设置页"播放速度"共享该键） */
@@ -979,6 +1119,10 @@ export struct PlayerView {
    */
   private async resolveAid(): Promise<number> {
     if (this.mAid > 0) {
+      return this.mAid;
+    }
+    if (this.epId > 0 && this.bangumiAid > 0) {
+      this.mAid = this.bangumiAid;
       return this.mAid;
     }
     let response = await ApiManager.getInstance().requestArchiveStat(this.bvid);

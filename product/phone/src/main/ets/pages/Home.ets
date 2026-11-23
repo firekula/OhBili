@@ -87,15 +87,10 @@ export struct HomeView {
         }
         .tabBar(this.TabBuilder($r('app.string.home_hot'), 1))
 
-        /*TabContent() {
+        TabContent() {
           BingeWatchView()
         }
         .tabBar(this.TabBuilder($r('app.string.home_animation'), 2))
-
-        TabContent() {
-          Text($r('app.string.func_develop')).fontSize(16)
-        }
-        .tabBar(this.TabBuilder($r('app.string.home_movie'), 3))*/
       }.onChange((index) => {
         this.currentIndex = index
       }).barWidth('80%').barHeight(40)

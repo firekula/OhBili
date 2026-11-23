@@ -17,6 +17,7 @@
     "pages/Favorite",
     "pages/FavDetail",
     "pages/WatchLater",
-    "pages/OfflineCache"
+    "pages/OfflineCache",
+    "pages/Bangumi"
   ]
 }
