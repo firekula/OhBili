@@ -23,6 +23,8 @@ export struct VideoOverview {
   @Link isFollowing: boolean;
   @Link fansCount: number;
   @Link archiveCount: number;
+  @Link isLiked: boolean;
+  @Link isCoined: boolean;
   scroller: Scroller = new Scroller();
   @State dataList: BaseVideo[] = [];
 
@@ -37,7 +39,7 @@ export struct VideoOverview {
                 VideoActionRow({ vInfo: this.vInfo })
               }
             } else if (index == 1) {
-              VideoTopBar({ vInfo: $vInfo })
+              VideoTopBar({ vInfo: $vInfo, isLiked: $isLiked, isCoined: $isCoined })
             } else {
               Column() {
                 Flex().width('100%').height(1)

@@ -37,6 +37,8 @@ struct VideoPlayer {
   @State fansCount: number = 0;
   @State archiveCount: number = 0;
   @State isFollowing: Boolean = false;
+  @State isLiked: boolean = false;
+  @State isCoined: boolean = false;
 
   aboutToAppear() {
     this.replyItem = null;
@@ -76,6 +78,54 @@ struct VideoPlayer {
       .then((cursor: ReplyCursor) => {
         this.replyCount = cursor.all_count;
       });
+    this.loadLikeCoinState();
+  }
+
+  /**
+   * 加载当前用户对该视频的点赞/投币状态（未登录跳过）；
+   * aid 缺失时经 archive/stat 兜底解析
+   */
+  private loadLikeCoinState(): void {
+    let loggedIn: boolean = AppStorage.get<boolean>('isOhBiliLoggedIn') ?? false;
+    if (!loggedIn) {
+      return;
+    }
+    this.resolveAidForState().then((aid: number) => {
+      if (aid <= 0) {
+        return;
+      }
+      ApiManager.getInstance().requestHasLike(aid).then((liked: number) => {
+        if (liked == 1) {
+          this.isLiked = true;
+        }
+      }).catch(() => {
+      });
+      ApiManager.getInstance().requestCoinCount(aid).then((count: number) => {
+        if (count > 0) {
+          this.isCoined = true;
+        }
+      }).catch(() => {
+      });
+    }).catch(() => {
+    });
+  }
+
+  /**
+   * 解析视频 aid：BaseVideo.aid 缺失时经 archive/stat 接口兜底获取
+   */
+  private async resolveAidForState(): Promise<number> {
+    if (this.vInfo != null && this.vInfo.aid != null && this.vInfo.aid > 0) {
+      return this.vInfo.aid;
+    }
+    let response = await ApiManager.getInstance().requestArchiveStat(this.vInfo.bvid);
+    if (response != null && response.data != null && response.data.aid != null) {
+      let aid: number = response.data.aid;
+      if (this.vInfo != null) {
+        this.vInfo.aid = aid;
+      }
+      return aid;
+    }
+    return 0;
   }
 
   onPageShow() {
@@ -142,7 +192,7 @@ struct VideoPlayer {
         } else {
           Tabs({ index: this.currentIndex }) {
             TabContent() {
-              VideoOverview({ vInfo: $vInfo, isFollowing: $isFollowing, fansCount: $fansCount, archiveCount: $archiveCount })
+              VideoOverview({ vInfo: $vInfo, isFollowing: $isFollowing, fansCount: $fansCount, archiveCount: $archiveCount, isLiked: $isLiked, isCoined: $isCoined })
             }
             .tabBar(this.TabBuilder(0))
 

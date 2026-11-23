@@ -47,6 +47,8 @@ import { FavFolderResponse } from '../model/response/FavFolderResponse';
 import { FavResourceResponse } from '../model/response/FavResourceResponse';
 import { WatchLaterResponse } from '../model/response/WatchLaterResponse';
 import { RelationStatResponse } from '../model/response/RelationStatResponse';
+import { HasLikeResponse } from '../model/response/HasLikeResponse';
+import { CoinCountResponse } from '../model/response/CoinCountResponse';
 
 export class TaskManager {
   public static getInstance(): TaskManager {
@@ -326,6 +328,40 @@ export class TaskManager {
                              qn: number): Promise<ApiResponse<PlayUrlResponse>> {
     var task = new taskPool.Task(requestPlayUrlWithQnTask, cookie, bvid, cid, qn);
     var response = await taskPool.execute(task) as ApiResponse<PlayUrlResponse>;
+    return response;
+  }
+
+  async likeVideo(cookie: string, aid: number, like: number,
+                  csrf: string): Promise<ApiResponse<EmptyResponse>> {
+    var task = new taskPool.Task(likeVideoTask, cookie, aid, like, csrf);
+    var response = await taskPool.execute(task) as ApiResponse<EmptyResponse>;
+    return response;
+  }
+
+  async requestHasLike(cookie: string, aid: number): Promise<ApiResponse<HasLikeResponse>> {
+    var task = new taskPool.Task(requestHasLikeTask, cookie, aid);
+    var response = await taskPool.execute(task) as ApiResponse<HasLikeResponse>;
+    return response;
+  }
+
+  async coinVideo(cookie: string, aid: number, multiply: number, selectLike: number,
+                  csrf: string): Promise<ApiResponse<EmptyResponse>> {
+    var task = new taskPool.Task(coinVideoTask, cookie, aid, multiply, selectLike, csrf);
+    var response = await taskPool.execute(task) as ApiResponse<EmptyResponse>;
+    return response;
+  }
+
+  async requestCoinCount(cookie: string, aid: number): Promise<ApiResponse<CoinCountResponse>> {
+    var task = new taskPool.Task(requestCoinCountTask, cookie, aid);
+    var response = await taskPool.execute(task) as ApiResponse<CoinCountResponse>;
+    return response;
+  }
+
+  async postDanmaku(cookie: string, oid: number, aid: number, msg: string,
+                    progress: number, mode: number,
+                    csrf: string): Promise<ApiResponse<EmptyResponse>> {
+    var task = new taskPool.Task(postDanmakuTask, cookie, oid, aid, msg, progress, mode, csrf);
+    var response = await taskPool.execute(task) as ApiResponse<EmptyResponse>;
     return response;
   }
 }
@@ -1227,6 +1263,116 @@ async function requestPlayUrlWithQnTask(cookie: string, bvid: string, cid: numbe
     // platform=html5&high_quality=1&fnval=0：返回 mp4 durl（含 size）+ accept_quality 档位表
     let resp: Response<PlayUrlResponse> = await dataService.getPlayUrlWithQn(cookie, bvid, cid,
       qn, 'html5', 1, 0);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function likeVideoTask(cookie: string, aid: number, like: number,
+                             csrf: string): Promise<ApiResponse<EmptyResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: EmptyResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<EmptyResponse> = await dataService.likeVideo(cookie, aid, like, csrf);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestHasLikeTask(cookie: string, aid: number):
+  Promise<ApiResponse<HasLikeResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: HasLikeResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<HasLikeResponse> = await dataService.hasLike(cookie, aid);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function coinVideoTask(cookie: string, aid: number, multiply: number, selectLike: number,
+                             csrf: string): Promise<ApiResponse<EmptyResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: EmptyResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<EmptyResponse> = await dataService.coinVideo(cookie, aid, multiply,
+      selectLike, csrf);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function requestCoinCountTask(cookie: string, aid: number):
+  Promise<ApiResponse<CoinCountResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: CoinCountResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<CoinCountResponse> = await dataService.getCoinCount(cookie, aid);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+async function postDanmakuTask(cookie: string, oid: number, aid: number, msg: string,
+                               progress: number, mode: number,
+                               csrf: string): Promise<ApiResponse<EmptyResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: EmptyResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    // retrofit buildURL 不做 URL 编码：弹幕内容需预编码后传参
+    // 固定参数：白色(16777215)/字号 25/pool 0/plat 1
+    let resp: Response<EmptyResponse> = await dataService.postDanmaku(cookie, oid, aid, 1,
+      encodeURIComponent(msg), Math.floor(progress), 16777215, 25, mode, 0, 1, csrf);
     code = resp.code();
     message = resp.message();
     result = resp.result;

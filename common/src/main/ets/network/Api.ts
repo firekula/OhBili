@@ -56,6 +56,8 @@ import { RelationStatResponse } from '../model/response/RelationStatResponse';
 import { FavFolderResponse } from '../model/response/FavFolderResponse';
 import { FavResourceResponse } from '../model/response/FavResourceResponse';
 import { WatchLaterResponse } from '../model/response/WatchLaterResponse';
+import { HasLikeResponse } from '../model/response/HasLikeResponse';
+import { CoinCountResponse } from '../model/response/CoinCountResponse';
 
 @BasePath("/")
 export class DataService extends BaseService {
@@ -700,4 +702,92 @@ export class DataService extends BaseService {
     Promise<Response<PlayUrlResponse>> {
     return <Response<PlayUrlResponse>>{};
   }
+
+  /**
+   * 点赞/取消点赞视频（POST，csrf 鉴权，无需 WBI）
+   * @param aid 视频 aid
+   * @param like 1=点赞 2=取消点赞（业务码 65006=已点赞）
+   */
+  @POST("x/web-interface/archive/like")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async likeVideo(@Header('Cookie') cookie: string,
+                  @Query('aid') aid: number,
+                  @Query('like') like: number,
+                  @Query('csrf') csrf: string):
+    Promise<Response<EmptyResponse>> {
+    return <Response<EmptyResponse>>{};
+  };
+
+  /**
+   * 查询是否已点赞视频（Cookie 鉴权）
+   * @param aid 视频 aid
+   */
+  @GET("x/web-interface/archive/has/like")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async hasLike(@Header('Cookie') cookie: string,
+                @Query('aid') aid: number):
+    Promise<Response<HasLikeResponse>> {
+    return <Response<HasLikeResponse>>{};
+  };
+
+  /**
+   * 给视频投币（POST，csrf 鉴权）
+   * 业务码：34004 操作太频繁、34005 已投满 2 枚、-104 硬币不足
+   * @param aid 视频 aid
+   * @param multiply 投币数量（1|2）
+   * @param selectLike 是否同时点赞（0|1）
+   */
+  @POST("x/web-interface/coin/add")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async coinVideo(@Header('Cookie') cookie: string,
+                  @Query('aid') aid: number,
+                  @Query('multiply') multiply: number,
+                  @Query('select_like') selectLike: number,
+                  @Query('csrf') csrf: string):
+    Promise<Response<EmptyResponse>> {
+    return <Response<EmptyResponse>>{};
+  };
+
+  /**
+   * 查询当前用户对视频的已投硬币数（Cookie 鉴权）
+   * @param aid 视频 aid
+   */
+  @GET("x/web-interface/archive/coins")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async getCoinCount(@Header('Cookie') cookie: string,
+                     @Query('aid') aid: number):
+    Promise<Response<CoinCountResponse>> {
+    return <Response<CoinCountResponse>>{};
+  };
+
+  /**
+   * 发送弹幕（POST，csrf 鉴权）
+   * @param oid 弹幕 cid
+   * @param aid 视频 aid
+   * @param type 弹幕类型（1=视频弹幕）
+   * @param msg 弹幕内容（已 URL 编码）
+   * @param progress 弹幕出现时间（毫秒）
+   * @param color 颜色（16777215=白色）
+   * @param fontsize 字号（25）
+   * @param mode 模式（1=滚动 4=底部 5=顶部）
+   * @param pool 弹幕池（0）
+   * @param plat 平台（1）
+   */
+  @POST("x/v2/dm/post")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async postDanmaku(@Header('Cookie') cookie: string,
+                    @Query('oid') oid: number,
+                    @Query('aid') aid: number,
+                    @Query('type') type: number,
+                    @Query('msg') msg: string,
+                    @Query('progress') progress: number,
+                    @Query('color') color: number,
+                    @Query('fontsize') fontsize: number,
+                    @Query('mode') mode: number,
+                    @Query('pool') pool: number,
+                    @Query('plat') plat: number,
+                    @Query('csrf') csrf: string):
+    Promise<Response<EmptyResponse>> {
+    return <Response<EmptyResponse>>{};
+  };
 }

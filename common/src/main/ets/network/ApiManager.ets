@@ -45,6 +45,7 @@ import { FavFolderData } from '../model/response/FavFolderResponse';
 import { FavMedia, FavResourceResult } from '../model/response/FavResourceResponse';
 import { WatchLaterResult } from '../model/response/WatchLaterResponse';
 import { RelationStatData } from '../model/response/RelationStatResponse';
+import { CoinCount } from '../model/response/CoinCountResponse';
 
 export class ApiManager {
   /** 最近一次搜索请求是否被风控（-412 等），供搜索结果页区分"无结果"与"请求过于频繁" */
@@ -1015,5 +1016,115 @@ export class ApiManager {
       return null;
     }
     return response.result.data;
+  }
+
+  /**
+   * 视频点赞/取消点赞（csrf 鉴权，无需 WBI）
+   * @param like 1=点赞 2=取消点赞
+   * @return 0=成功 -101=登录失效 其余=业务失败码（65006=已点赞）
+   */
+  async likeVideo(aid: number, like: number): Promise<number> {
+    BLog.d("likeVideo aid=" + aid + ", like=" + like);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    let csrf: string = ApiManager.getCsrf();
+    let response = await TaskManager.getInstance().likeVideo(cookie, aid, like, csrf);
+    if (response.code == -1) {
+      BLog.e("likeVideo err=" + response.message);
+      return -1;
+    }
+    if (response.result == null) {
+      return -1;
+    }
+    if (response.result.code == 0) {
+      return 0;
+    }
+    BLog.e("likeVideo biz err, code=" + response.result.code + ", msg=" + response.result.message);
+    return response.result.code;
+  }
+
+  /**
+   * 查询当前用户是否已点赞视频（data: 0|1）；未登录/失败返回 -1
+   */
+  async requestHasLike(aid: number): Promise<number> {
+    BLog.d("requestHasLike aid=" + aid);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    let response = await TaskManager.getInstance().requestHasLike(cookie, aid);
+    if (response.code == -1 || response.result == null) {
+      BLog.e("requestHasLike err, code=" + response.code + ", msg=" + response.message);
+      return -1;
+    }
+    if (response.result.code != 0 || response.result.data == null) {
+      BLog.e("requestHasLike biz err, code=" + response.result.code);
+      return -1;
+    }
+    return response.result.data;
+  }
+
+  /**
+   * 视频投币（csrf 鉴权）
+   * @return 0=成功 -101=登录失效 其余=业务失败码（34004 太频繁/34005 已投满/-104 硬币不足）
+   */
+  async coinVideo(aid: number, multiply: number, selectLike: boolean): Promise<number> {
+    BLog.d("coinVideo aid=" + aid + ", multiply=" + multiply + ", selectLike=" + selectLike);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    let csrf: string = ApiManager.getCsrf();
+    let response = await TaskManager.getInstance().coinVideo(cookie, aid, multiply,
+      selectLike ? 1 : 0, csrf);
+    if (response.code == -1) {
+      BLog.e("coinVideo err=" + response.message);
+      return -1;
+    }
+    if (response.result == null) {
+      return -1;
+    }
+    if (response.result.code == 0) {
+      return 0;
+    }
+    BLog.e("coinVideo biz err, code=" + response.result.code + ", msg=" + response.result.message);
+    return response.result.code;
+  }
+
+  /**
+   * 查询当前用户对视频的已投硬币数；未登录/失败返回 -1
+   */
+  async requestCoinCount(aid: number): Promise<number> {
+    BLog.d("requestCoinCount aid=" + aid);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    let response = await TaskManager.getInstance().requestCoinCount(cookie, aid);
+    if (response.code == -1 || response.result == null || response.result.data == null) {
+      BLog.e("requestCoinCount err, code=" + response.code + ", msg=" + response.message);
+      return -1;
+    }
+    if (response.result.code != 0) {
+      BLog.e("requestCoinCount biz err, code=" + response.result.code);
+      return -1;
+    }
+    return response.result.data.multiply ?? 0;
+  }
+
+  /**
+   * 发送弹幕（csrf 鉴权，默认白色 25 字号滚动弹幕）
+   * @return 0=成功 -101=登录失效 其余=业务失败码
+   */
+  async sendDanmaku(cid: number, aid: number, msg: string, progressMs: number,
+                    mode: number = 1): Promise<number> {
+    BLog.d("sendDanmaku cid=" + cid + ", aid=" + aid + ", msgLen=" + msg.length
+      + ", progress=" + progressMs + ", mode=" + mode);
+    let cookie: string = LoginHelper.buildCookieHeader();
+    let csrf: string = ApiManager.getCsrf();
+    let response = await TaskManager.getInstance().postDanmaku(cookie, cid, aid, msg,
+      progressMs, mode, csrf);
+    if (response.code == -1) {
+      BLog.e("sendDanmaku err=" + response.message);
+      return -1;
+    }
+    if (response.result == null) {
+      return -1;
+    }
+    if (response.result.code == 0) {
+      return 0;
+    }
+    BLog.e("sendDanmaku biz err, code=" + response.result.code + ", msg=" + response.result.message);
+    return response.result.code;
   }
 }

@@ -30,7 +30,8 @@ import {
   Callback,
   OnDanmakuClickListener,
   IDanmakuView,
-  DanmakuTimer
+  DanmakuTimer,
+  DanmakuUtils
 } from '@ohos/danmakuflamemaster'
 import display from '@ohos.display';
 import { ProtoSource } from '../../model/proto/ProtoSource';
@@ -42,6 +43,7 @@ import { PlayUrlResponse } from '../../model/response/PlayUrlResponse';
 import { VideoPartsResponse } from '../../model/response/VideoPartsResponse';
 import { ApiConstants } from '../../network/ApiConstants';
 import { StringUtil } from '../../utils/StringUtil';
+import { NavHelper } from '../../utils/NavHelper';
 
 let PROGRESS_MAX_VALUE: number = 100;
 let DANMAKU_TIME: number = 360000;
@@ -122,6 +124,12 @@ export struct PlayerView {
   private mActive: boolean = true;
   /** 隐藏时正在播放：回到页面后恢复播放 */
   private mResumeOnShow: boolean = false;
+  /** 弹幕发送输入条 */
+  @State mDanmakuInputVisible: boolean = false;
+  @State mDanmakuInputText: string = '';
+  @State mDanmakuSending: boolean = false;
+  /** 视频 aid（发弹幕接口需要，懒解析缓存） */
+  private mAid: number = 0;
 
   private createParser(source: ProtoSource): BaseDanmakuParser {
     let parser: BaseDanmakuParser = new DanmakuParser();
@@ -416,6 +424,9 @@ export struct PlayerView {
         mIsVip: this.mIsVip,
         mSpeed: $mSpeed,
         mLoopPlay: $mLoopPlay,
+        onRequestDanmakuInput: (): void => {
+          this.openDanmakuInput();
+        },
         requestEnterFullScreen: (): void => {
           this.enterFullScreen();
         },
@@ -510,6 +521,50 @@ export struct PlayerView {
         })
       }
 
+      if (this.mDanmakuInputVisible) {
+        // 弹幕输入条：底部深色条内输入+发送，点击输入条外区域收起
+        Column() {
+          Blank()
+          Row({ space: 8 }) {
+            TextInput({ text: this.mDanmakuInputText, placeholder: '发个弹幕见证当下' })
+              .layoutWeight(1)
+              .height(36)
+              .fontSize(13)
+              .fontColor(Color.White)
+              .caretColor(Color.White)
+              .placeholderColor('#99ffffff')
+              .placeholderFont({ size: 13 })
+              .backgroundColor('#33ffffff')
+              .borderRadius(18)
+              .padding({ left: 14, right: 14 })
+              .defaultFocus(true)
+              .onChange((value: string) => {
+                this.mDanmakuInputText = value;
+              })
+              .onSubmit(() => {
+                this.sendDanmaku();
+              })
+            Text(this.mDanmakuSending ? '发送中' : '发送')
+              .fontSize(14)
+              .fontColor(this.mDanmakuSending ? '#80ffffff' : '#fb7299')
+              .height(36)
+              .padding({ left: 16, right: 4 })
+              .textAlign(TextAlign.Center)
+              .onClick(() => {
+                this.sendDanmaku();
+              })
+          }
+          .width('100%')
+          .padding({ left: 12, right: 12, bottom: 10 })
+          .backgroundColor('#66000000')
+        }
+        .width('100%')
+        .height('100%')
+        .onClick(() => {
+          this.closeDanmakuInput();
+        })
+      }
+
     }.width('100%')
     .aspectRatio(this.mIsFullScreen && this.mWinW > 0 && this.mWinH > 0 ? this.mWinW / this.mWinH : this.aspRatio)
     .backgroundColor(Color.Black)
@@ -541,7 +596,6 @@ export struct PlayerView {
   }
 
   private getPlayUrl(bvid: string, cid: number) {
-    // 记忆的清晰度档位（播放器菜单选择过）：走 qn 扩展端点；否则保持原默认链路
     let preferredQn: number = AppStorage.get<number>('ohBiliPlayQn') ?? 0;
     ApiManager.getInstance().requestPlayUrl(bvid, cid, preferredQn > 0 ? preferredQn : undefined)
       .then((resp: PlayUrlResponse) => {
@@ -585,11 +639,11 @@ export struct PlayerView {
         return;
       }
       this.updateQualityInfo(resp);
-      this.startAt = curMs / 1000.0;
       this.mPlayUrl = resp.data.durl[0].url.replace(/\\u0026/g, '&');
       BLog.i('BiliPlayer switchQuality qn=' + qn + ', resumeMs=' + curMs);
       // 记忆用户选择的清晰度档位（下次起播优先使用）
       AppStorage.setOrCreate('ohBiliPlayQn', qn);
+      this.startAt = curMs / 1000.0;
       // 服务端回退（如 html5 线路最高 720P）时提示实际档位
       const gotQn: number = resp.data.quality ?? 0;
       if (gotQn > 0 && gotQn !== qn) {
@@ -828,6 +882,112 @@ export struct PlayerView {
       this.mDanmakuModel.prepare(this.mParser, this.mDanmakuContext);
     }
   }
+
+  /**
+   * 打开弹幕输入条：未登录引导登录
+   */
+  private openDanmakuInput(): void {
+    let loggedIn: boolean = AppStorage.get<boolean>('isOhBiliLoggedIn') ?? false;
+    if (!loggedIn) {
+      NavHelper.goLogin();
+      return;
+    }
+    this.mDanmakuInputVisible = true;
+  }
+
+  private closeDanmakuInput(): void {
+    this.mDanmakuInputVisible = false;
+  }
+
+  /**
+   * 发送弹幕：当前播放位置（毫秒）提交服务端，成功后本地即时上屏
+   */
+  private sendDanmaku(): void {
+    if (this.mDanmakuSending) {
+      return;
+    }
+    let text: string = this.mDanmakuInputText.trim();
+    if (text.length == 0) {
+      this.getUIContext().getPromptAction().showToast({ message: '弹幕内容不能为空' });
+      return;
+    }
+    if (this.cid <= 0) {
+      this.getUIContext().getPromptAction().showToast({ message: '视频信息未就绪，请稍后再试' });
+      return;
+    }
+    this.mDanmakuSending = true;
+    this.resolveAid().then((aid: number) => {
+      if (aid <= 0) {
+        this.mDanmakuSending = false;
+        this.getUIContext().getPromptAction().showToast({ message: '视频信息获取失败，请重试' });
+        return;
+      }
+      let progressMs: number = this.player.getCurrentTime();
+      ApiManager.getInstance().sendDanmaku(this.cid, aid, text, progressMs, 1)
+        .then((code: number) => {
+          this.mDanmakuSending = false;
+          if (code == 0) {
+            this.getUIContext().getPromptAction().showToast({ message: '弹幕发送成功' });
+            this.mDanmakuInputText = '';
+            this.mDanmakuInputVisible = false;
+            this.showDanmakuLocally(text);
+            return;
+          }
+          if (code == -101) {
+            this.getUIContext().getPromptAction().showToast({ message: '登录已失效，请重新登录' });
+            NavHelper.goLogin();
+            return;
+          }
+          this.getUIContext().getPromptAction().showToast({ message: '弹幕发送失败，请重试' });
+        })
+        .catch(() => {
+          this.mDanmakuSending = false;
+          this.getUIContext().getPromptAction().showToast({ message: '弹幕发送失败，请重试' });
+        });
+    }).catch(() => {
+      this.mDanmakuSending = false;
+      this.getUIContext().getPromptAction().showToast({ message: '视频信息获取失败，请重试' });
+    });
+  }
+
+  /**
+   * 发送成功后本地即时上屏：isLive 弹幕进实时渲染队列立即滚入；
+   * time 取弹幕视图当前播放时刻（分段相对），使其落入当前屏幕渲染窗口；
+   * 字号/描边样式与 DanmakuParser 解析规则一致
+   */
+  private showDanmakuLocally(text: string): void {
+    if (this.mDanmakuContext == null || this.mDanmakuModel == null) {
+      return;
+    }
+    let item: BaseDanmaku = this.mDanmakuContext.mDanmakuFactory
+      .createDanmakuByContext(BaseDanmaku.TYPE_SCROLL_RL, this.mDanmakuContext);
+    if (item == null) {
+      return;
+    }
+    item.isLive = true;
+    item.setTime(this.mDanmakuModel.getCurrentTime());
+    item.text = text;
+    item.textColor = 0xffffff;
+    item.textSize = 25 * this.danmakuScaleValue();
+    DanmakuUtils.fillText(item, item.text);
+    this.mDanmakuModel.addDanmaku(item);
+  }
+
+  /**
+   * 解析视频 aid：番剧场景直接取详情页传入的集 aid；
+   * BaseVideo 场景下经 archive/stat 接口获取（结果缓存）
+   */
+  private async resolveAid(): Promise<number> {
+    if (this.mAid > 0) {
+      return this.mAid;
+    }
+    let response = await ApiManager.getInstance().requestArchiveStat(this.bvid);
+    if (response != null && response.data != null && response.data.aid != null) {
+      this.mAid = response.data.aid;
+      return this.mAid;
+    }
+    return 0;
+  }
 }
 
 @Component
@@ -863,6 +1023,9 @@ struct PlayerControlView {
   requestEnterFullScreen: () => void = () => {
   };
   requestExitFullScreen: () => void = () => {
+  };
+  /** 弹幕输入拉起请求（PlayerView 打开弹幕输入条） */
+  onRequestDanmakuInput: () => void = () => {
   };
   onSwitchQuality: (qn: number) => void = (qn: number) => {
   };
@@ -954,6 +1117,22 @@ struct PlayerControlView {
             .fontColor(Color.White)
 
           Blank()
+
+          // 弹幕输入入口：点击拉起底部弹幕输入条
+          Text('发个弹幕见证当下')
+            .fontSize(12)
+            .fontColor(Color.White)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .constraintSize({ maxWidth: 140 })
+            .height(28)
+            .padding({ left: 12, right: 12 })
+            .borderRadius(14)
+            .backgroundColor('#4d000000')
+            .margin({ right: 8 })
+            .onClick(() => {
+              this.onRequestDanmakuInput();
+            })
 
           // 弹幕开关：圆形按钮加大热区，开/关状态背景与透明度区分
           Row() {
