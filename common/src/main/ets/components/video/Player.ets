@@ -666,6 +666,9 @@ export struct PlayerView {
         onSwitchQuality: (qn: number): void => {
           this.switchQuality(qn);
         },
+        onCodecPreferenceChanged: (): void => {
+          this.onCodecPreferenceChanged();
+        },
         onSetSpeed: (speed: number): void => {
           this.setPlaySpeed(speed);
         },
@@ -1207,6 +1210,67 @@ export struct PlayerView {
     }
   }
 
+  /**
+   * 解码偏好变更（设置菜单）：偏好经 @StorageLink 已持久化；
+   * DASH 激活的普通视频即时以当前档位重建 MPD 生效（不走 switchQuality 公共入口，
+   * same-qn/自动档守卫会拦截）；durl 回退/番剧/本地场景静默返回，下次 DASH 会话生效。
+   */
+  private onCodecPreferenceChanged(): void {
+    if (this.mDestroyed || this.localPath != '' || this.epId > 0 || !this.mDashActive || this.cid <= 0) {
+      return;
+    }
+    try {
+      let stored: number = AppStorage.get<number>('ohBiliPlayQn') ?? 0;
+      let reqQn: number = stored > 0 ? stored : 120;
+      let pinQn: number = stored > 0 ? stored : -1;
+      let curMs: number = this.player.getCurrentTime();
+      if (curMs <= 0 && this.startAt > 0) {
+        curMs = this.startAt * 1000;
+      }
+      this.showLoadIng();
+      ApiManager.getInstance().requestPlayUrlWbiDash(this.bvid, this.cid, reqQn)
+        .then((resp: PlayUrlResponse | null) => {
+          if (this.mDestroyed) {
+            return;
+          }
+          if (resp == null || resp.data == null || resp.data.dash == null
+            || resp.data.dash.video == null || resp.data.dash.video.length === 0) {
+            this.hideLoadIng();
+            this.getUIContext().getPromptAction().showToast({ message: '解码偏好切换失败，请稍后重试' });
+            return;
+          }
+          this.updateQualityInfo(resp.data);
+          let mpdOpts: DashMpdOptions = {
+            proxyBase: this.mDashProxyBase,
+            codecPreference: AppStorage.get<string>('ohBiliCodecPreference') ?? 'avc1',
+            pinQn: pinQn
+          };
+          let mpd: string = DashMpdBuilder.build(resp.data.dash, mpdOpts);
+          if (mpd == '') {
+            this.hideLoadIng();
+            this.getUIContext().getPromptAction().showToast({ message: '解码偏好切换失败，请稍后重试' });
+            return;
+          }
+          this.mDashServer.updateMpd(mpd);
+          BLog.i('BiliPlayer codec preference rebuild, pref=' + mpdOpts.codecPreference
+            + ', resumeMs=' + curMs);
+          this.switchSourceResume(curMs);
+        })
+        .catch((err: BusinessError) => {
+          if (this.mDestroyed) {
+            return;
+          }
+          BLog.e('BiliPlayer codec preference err: ' + JSON.stringify(err));
+          this.hideLoadIng();
+          this.getUIContext().getPromptAction().showToast({ message: '解码偏好切换失败，请稍后重试' });
+        });
+    } catch (err) {
+      BLog.e('BiliPlayer codec preference exception: ' + JSON.stringify(err));
+      this.hideLoadIng();
+      this.getUIContext().getPromptAction().showToast({ message: '解码偏好切换失败，请稍后重试' });
+    }
+  }
+
   /** 服务端档位回退提示（如 html5 线路最高 720P） */
   private toastQualityFallback(gotQn: number, wantedQn: number): void {
     if (gotQn <= 0 || gotQn === wantedQn) {
@@ -1608,6 +1672,8 @@ struct PlayerControlView {
   @Link mCurrentQn: number;
   /** 记忆的清晰度档位（-1=自动 / 0=自动（从未选择）/ >0=锁定档），与 Player 侧 AppStorage 写入同步刷新 */
   @StorageLink('ohBiliPlayQn') mStoredQn: number = 0;
+  /** 解码偏好（avc1/hev1/av01，默认 avc1），与 Player 侧共享持久化键 */
+  @StorageLink('ohBiliCodecPreference') mCodecPref: string = 'avc1';
   private mIsVip: boolean = false;
   @Link mSpeed: number;
   @Link mLoopPlay: boolean;
@@ -1627,6 +1693,9 @@ struct PlayerControlView {
   onRequestDanmakuInput: () => void = () => {
   };
   onSwitchQuality: (qn: number) => void = (qn: number) => {
+  };
+  /** 解码偏好变更（Player 侧 DASH 激活时重建 MPD 即时生效） */
+  onCodecPreferenceChanged: () => void = () => {
   };
   onSetSpeed: (speed: number) => void = (speed: number) => {
   };
@@ -1999,6 +2068,8 @@ struct PlayerControlView {
             this.danmakuPane()
           } else if (this.mSheetMode === 'quality') {
             this.qualityPane()
+          } else if (this.mSheetMode === 'codec') {
+            this.codecPane()
           } else {
             this.speedPane()
           }
@@ -2021,6 +2092,9 @@ struct PlayerControlView {
     if (this.mSheetMode === 'quality') {
       return '清晰度选择';
     }
+    if (this.mSheetMode === 'codec') {
+      return '解码偏好';
+    }
     if (this.mSheetMode === 'speed') {
       return '播放速度';
     }
@@ -2038,6 +2112,9 @@ struct PlayerControlView {
       })
       this.menuRow('播放速度', this.speedLabel(), () => {
         this.mSheetMode = 'speed';
+      })
+      this.menuRow('解码偏好', this.codecLabel(), () => {
+        this.mSheetMode = 'codec';
       })
       Row() {
         Text('循环播放')
@@ -2202,6 +2279,32 @@ struct PlayerControlView {
   }
 
   @Builder
+  codecPane() {
+    Column() {
+      ForEach(['avc1', 'hev1', 'av01'], (pref: string) => {
+        Row() {
+          Text(this.codecLabelOf(pref))
+            .fontSize(15)
+            .fontColor(this.mCodecPref === pref ? '#fb7299' : '#333333')
+          Blank()
+          if (this.mCodecPref === pref) {
+            Text('✓')
+              .fontSize(16)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#fb7299')
+          }
+        }
+        .width('100%')
+        .height(46)
+        .onClick(() => {
+          this.onCodecTap(pref);
+        })
+      }, (pref: string) => 'codec_' + pref)
+    }
+    .width('100%')
+  }
+
+  @Builder
   speedPane() {
     Column() {
       ForEach(this.speedOptions(), (speed: number) => {
@@ -2321,6 +2424,30 @@ struct PlayerControlView {
     }
     this.mSheetVisible = false;
     this.onSwitchQuality(qn);
+  }
+
+  /** 解码偏好标识 → 菜单文案 */
+  private codecLabelOf(pref: string): string {
+    if (pref === 'hev1') {
+      return 'HEVC (高效)';
+    }
+    if (pref === 'av01') {
+      return 'AV1 (先进)';
+    }
+    return 'AVC (兼容)';
+  }
+
+  private codecLabel(): string {
+    return this.codecLabelOf(this.mCodecPref);
+  }
+
+  private onCodecTap(pref: string): void {
+    if (pref === this.mCodecPref) {
+      return;
+    }
+    this.mCodecPref = pref;
+    this.mSheetVisible = false;
+    this.onCodecPreferenceChanged();
   }
 
   private speedOptions(): number[] {
