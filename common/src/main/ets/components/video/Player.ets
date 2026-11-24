@@ -163,6 +163,8 @@ export struct PlayerView {
   private mDashActive: boolean = false;
   /** DASH 尝试失败已回退 durl（防循环回退标记） */
   private mDashFallbackUsed: boolean = false;
+  /** DASH 本地代理基址（如 http://127.0.0.1:34567）：切换清晰度重建 MPD 时复用，代理不重启 */
+  private mDashProxyBase: string = '';
 
   private createParser(source: ProtoSource): BaseDanmakuParser {
     let parser: BaseDanmakuParser = new DanmakuParser();
@@ -888,6 +890,7 @@ export struct PlayerView {
         return false;
       }
       this.mDashServer.updateMpd(mpd);
+      this.mDashProxyBase = 'http://127.0.0.1:' + port;
       this.mDashActive = true;
       this.mPlayUrl = 'http://127.0.0.1:' + port + '/dash.mpd';
       BLog.i('BiliPlayer DASH play url=' + this.mPlayUrl + ', qnReq=' + qnReq);
@@ -926,6 +929,10 @@ export struct PlayerView {
    */
   private getBangumiPlayUrl() {
     let preferredQn: number = AppStorage.get<number>('ohBiliPlayQn') ?? 0;
+    if (preferredQn < 0) {
+      // 自动档记忆 -1：番剧链路不接 DASH，归一化为 0 保持默认取流行为
+      preferredQn = 0;
+    }
     ApiManager.getInstance().requestBangumiPlayUrl(this.epId, this.cid, preferredQn)
       .then((resp: ApiResponse<PlayUrlResponse>) => {
         if (this.mDestroyed) {
@@ -992,6 +999,10 @@ export struct PlayerView {
     }
     this.showLoadIng();
     let qn: number = AppStorage.get<number>('ohBiliPlayQn') ?? 0;
+    if (qn < 0) {
+      // 自动档记忆 -1：归一化为 0，番剧默认取流
+      qn = 0;
+    }
     ApiManager.getInstance().requestBangumiPlayUrl(this.epId, this.cid, qn)
       .then((resp: ApiResponse<PlayUrlResponse>) => {
         if (this.mDestroyed) {
@@ -1030,11 +1041,15 @@ export struct PlayerView {
     if (qn === this.mCurrentQn || this.mDestroyed || this.localPath != '' || this.cid <= 0) {
       return;
     }
+    if (qn === -1 && (AppStorage.get<number>('ohBiliPlayQn') ?? 0) <= 0) {
+      // 已在自动档再点「自动」：无操作（面板已由 onQualityTap 关闭，与点当前档位行为一致）
+      return;
+    }
     let curMs: number = this.player.getCurrentTime();
     this.showLoadIng();
     if (this.epId > 0) {
       // 番剧：清晰度切换走番剧 playurl 链路
-      ApiManager.getInstance().requestBangumiPlayUrl(this.epId, this.cid, qn)
+      ApiManager.getInstance().requestBangumiPlayUrl(this.epId, this.cid, qn > 0 ? qn : 0)
         .then((resp: ApiResponse<PlayUrlResponse>) => {
           if (this.mDestroyed) {
             return;
@@ -1053,7 +1068,64 @@ export struct PlayerView {
         });
       return;
     }
-    ApiManager.getInstance().requestPlayUrl(this.bvid, this.cid, qn).then((resp: PlayUrlResponse) => {
+    if (this.mDashActive) {
+      // DASH 激活：重取 playurl → 重建 MPD → updateMpd → 同代理续播（代理不重启）
+      try {
+        // 自动档请求 qn=120 拉全量清晰度（恢复 ABR）；锁定档请求所选档位（MPD 收敛单档）
+        let reqQn: number = qn > 0 ? qn : 120;
+        ApiManager.getInstance().requestPlayUrlWbiDash(this.bvid, this.cid, reqQn)
+          .then((resp: PlayUrlResponse | null) => {
+            if (this.mDestroyed) {
+              return;
+            }
+            if (resp == null || resp.data == null || resp.data.dash == null
+              || resp.data.dash.video == null || resp.data.dash.video.length === 0) {
+              // 失败不写记忆、不动 mPlayUrl、不换源：旧 MPD 继续服务，播放不中断
+              this.hideLoadIng();
+              this.getUIContext().getPromptAction()
+                .showToast({ message: '清晰度切换失败，请稍后重试' });
+              return;
+            }
+            this.updateQualityInfo(resp.data);
+            let mpdOpts: DashMpdOptions = {
+              proxyBase: this.mDashProxyBase,
+              codecPreference: AppStorage.get<string>('ohBiliCodecPreference') ?? 'avc1',
+              pinQn: qn > 0 ? qn : -1
+            };
+            let mpd: string = DashMpdBuilder.build(resp.data.dash, mpdOpts);
+            if (mpd == '') {
+              this.hideLoadIng();
+              this.getUIContext().getPromptAction()
+                .showToast({ message: '清晰度切换失败，请稍后重试' });
+              return;
+            }
+            this.mDashServer.updateMpd(mpd);
+            AppStorage.setOrCreate('ohBiliPlayQn', qn);
+            if (qn > 0) {
+              // 仅锁定档提示服务端档位回退；自动档用户未指定档位不弹
+              this.toastQualityFallback(this.mCurrentQn, qn);
+            }
+            BLog.i('BiliPlayer switchQuality qn=' + qn + ', resumeMs=' + curMs);
+            this.switchSourceResume(curMs);
+          })
+          .catch((err: BusinessError) => {
+            if (this.mDestroyed) {
+              return;
+            }
+            BLog.e('BiliPlayer switchQuality DASH err: ' + JSON.stringify(err));
+            this.hideLoadIng();
+            this.getUIContext().getPromptAction()
+              .showToast({ message: '清晰度切换失败，请稍后重试' });
+          });
+      } catch (err) {
+        BLog.e('BiliPlayer switchQuality DASH exception: ' + JSON.stringify(err));
+        this.hideLoadIng();
+        this.getUIContext().getPromptAction().showToast({ message: '清晰度切换失败，请稍后重试' });
+      }
+      return;
+    }
+    ApiManager.getInstance().requestPlayUrl(this.bvid, this.cid, qn > 0 ? qn : undefined)
+      .then((resp: PlayUrlResponse) => {
       if (this.mDestroyed) {
         return;
       }
@@ -1467,6 +1539,8 @@ struct PlayerControlView {
   @Link mAcceptQuality: number[];
   @Link mAcceptDesc: string[];
   @Link mCurrentQn: number;
+  /** 记忆的清晰度档位（-1=自动 / 0=自动（从未选择）/ >0=锁定档），与 Player 侧 AppStorage 写入同步刷新 */
+  @StorageLink('ohBiliPlayQn') mStoredQn: number = 0;
   private mIsVip: boolean = false;
   @Link mSpeed: number;
   @Link mLoopPlay: boolean;
@@ -2010,11 +2084,28 @@ struct PlayerControlView {
           .fontColor('#999999')
           .margin({ top: 24 })
       }
+      Row() {
+        Text('自动')
+          .fontSize(15)
+          .fontColor(this.mStoredQn <= 0 ? '#fb7299' : '#333333')
+        Blank()
+        if (this.mStoredQn <= 0) {
+          Text('✓')
+            .fontSize(16)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#fb7299')
+        }
+      }
+      .width('100%')
+      .height(46)
+      .onClick(() => {
+        this.onQualityTap(-1);
+      })
       ForEach(this.mAcceptQuality, (qn: number) => {
         Row() {
           Text(this.qualityDescAt(qn))
             .fontSize(15)
-            .fontColor(this.mCurrentQn === qn ? '#fb7299' :
+            .fontColor(this.mCurrentQn === qn && this.mStoredQn > 0 ? '#fb7299' :
             (this.qualitySelectable(qn) ? '#333333' : '#bbbbbb'))
           if (this.isVipQn(qn)) {
             Text('大会员')
@@ -2026,7 +2117,7 @@ struct PlayerControlView {
               .margin({ left: 8 })
           }
           Blank()
-          if (this.mCurrentQn === qn) {
+          if (this.mCurrentQn === qn && this.mStoredQn > 0) {
             Text('✓')
               .fontSize(16)
               .fontWeight(FontWeight.Bold)
@@ -2089,6 +2180,9 @@ struct PlayerControlView {
 
   /** 当前清晰度描述（菜单行右侧值） */
   private currentQualityDesc(): string {
+    if (this.mStoredQn <= 0) {
+      return '自动';
+    }
     if (this.mCurrentQn <= 0) {
       return '';
     }
