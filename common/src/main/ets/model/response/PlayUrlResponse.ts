@@ -41,7 +41,7 @@ export interface PlayUrlDurl {
 
 /** B站 DASH 流集合（fnval=4048 响应的 dash 字段） */
 export interface BiliDash {
-    /** 视频总时长（毫秒） */
+    /** 视频总时长（秒） */
     duration: number
     /** 最小缓冲时长（秒） */
     min_buffer_time?: number

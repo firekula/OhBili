@@ -46,13 +46,13 @@ export class DashMpdBuilder {
         if (videoReps.length == 0 && audioRep.length == 0) {
             return '';
         }
-        let durationMs: number = dash.duration ?? 0;
+        let durationSec: number = dash.duration ?? 0;
         let minBuf: number = dash.min_buffer_time ?? 1.5;
         let xml: string = '<?xml version="1.0" encoding="UTF-8"?>\n';
         xml += '<MPD xmlns="urn:mpeg:dash:schema:mpd:2011"'
             + ' profiles="urn:mpeg:dash:profile:isoff-on-demand:2011"'
             + ' type="static"'
-            + ' mediaPresentationDuration="PT' + (durationMs / 1000.0).toFixed(3) + 'S"'
+            + ' mediaPresentationDuration="PT' + durationSec.toFixed(3) + 'S"'
             + ' minBufferTime="PT' + minBuf.toFixed(3) + 'S">\n';
         xml += '  <Period>\n';
         xml += '    <AdaptationSet id="0" contentType="video" mimeType="video/mp4"'
