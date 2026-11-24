@@ -178,10 +178,12 @@ export class ApiManager {
   }
 
   /**
-   * [SPIKE 一次性验证代码] WBI 签名的 DASH 线路（x/player/wbi/playurl + fnval=4048）。
-   * 返回的 dash 流位于 result.data.dash；验证后随 spike 一并移除。
+   * WBI 签名的 DASH 线路（x/player/wbi/playurl + fnval=4048&fourk=1）。
+   * 返回的 dash 音视频分离流位于 result.data.dash；
+   * 请求失败或业务码非 0 返回 null，调用方应回退 durl 线路。
    */
-  async requestPlayUrlWbiDash(bvid: string, cid: number, qn: number): Promise<ApiResponse<PlayUrlResponse>> {
+  async requestPlayUrlWbiDash(bvid: string, cid: number, qn: number): Promise<PlayUrlResponse | null> {
+    BLog.d("requestPlayUrlWbiDash bvid=" + bvid + ", cid=" + cid + ", qn=" + qn);
     let cookie: string = LoginHelper.buildCookieHeader();
     let signed: Record<string, string> = await WbiSigner.signParams({
       'bvid': bvid,
@@ -190,8 +192,22 @@ export class ApiManager {
       'fnval': '4048',
       'fourk': '1'
     });
-    return TaskManager.getInstance().requestPlayUrlWbiDash(cookie, bvid, cid, qn,
+    let response = await TaskManager.getInstance().requestPlayUrlWbiDash(cookie, bvid, cid, qn,
       signed['w_rid'] ?? '', signed['wts'] ?? '');
+    if (response.code == -1) {
+      BLog.e("requestPlayUrlWbiDash err=" + response.message);
+      return null;
+    }
+    if (response.result == null) {
+      return null;
+    }
+    // retrofit 的 code() 为 HTTP 状态码；B 站业务码在响应体（result.code），非 0 视为失败
+    if (response.result.code != 0) {
+      BLog.e("requestPlayUrlWbiDash biz err, code=" + response.result.code
+        + ", msg=" + response.result.message);
+      return null;
+    }
+    return response.result;
   }
 
   /**

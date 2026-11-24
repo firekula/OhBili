@@ -347,7 +347,6 @@ export class TaskManager {
     return response;
   }
 
-  // [SPIKE 一次性验证代码] DASH playurl（fnval=4048），验证后随 spike 一并移除
   async requestPlayUrlWbiDash(cookie: string, bvid: string, cid: number,
                               qn: number, wRid: string,
                               wts: string): Promise<ApiResponse<PlayUrlResponse>> {
@@ -1408,7 +1407,6 @@ async function requestPlayUrlWbiMp4Task(cookie: string, bvid: string, cid: numbe
   return new ApiResponse(result, code, message);
 }
 
-// [SPIKE 一次性验证代码] x/player/wbi/playurl + fnval=4048：DASH 音视频分离流
 async function requestPlayUrlWbiDashTask(cookie: string, bvid: string, cid: number,
                                          qn: number, wRid: string,
                                          wts: string): Promise<ApiResponse<PlayUrlResponse>> {
@@ -1420,6 +1418,7 @@ async function requestPlayUrlWbiDashTask(cookie: string, bvid: string, cid: numb
     let dataService = new ServiceBuilder()
       .setEndpoint(ApiConstants.apiBase)
       .build(DataService);
+    // x/player/wbi/playurl + fnval=4048&fourk=1：DASH 音视频分离流（video/audio 分离 + SegmentBase）
     let resp: Response<PlayUrlResponse> = await dataService.getPlayUrlWbiMp4(cookie, bvid, cid,
       qn, 4048, 1, wRid, wts);
     code = resp.code();
