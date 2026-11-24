@@ -19,7 +19,7 @@ import http from '@ohos.net.http';
 import router from '@ohos.router';
 import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
 import { ApiManager, ApiConstants, BLog } from '@ohos/common';
-import { PlayUrl, PlayUrlResponse, BiliDash, BiliDashStream, BiliSegmentBase } from '@ohos/common';
+import { PlayUrl, PlayUrlResponse, BiliDash, BiliDashStream, BiliDashAudioStream, BiliSegmentBase } from '@ohos/common';
 
 /** 稳定的公共视频（Rick Astley - Never Gonna Give You Up） */
 let SPIKE_BVID: string = 'BV1GJ411x7h7';
@@ -101,16 +101,15 @@ struct DashSpike {
       // step2: DASH playurl
       this.log('step2: wbi playurl fnval=4048 qn=80');
       let resp = await ApiManager.getInstance().requestPlayUrlWbiDash(SPIKE_BVID, cid, 80);
-      this.log('playurl httpCode=' + resp.code + ', msg=' + resp.message);
-      // retrofit 的 code() 为 HTTP 状态码；B站业务码在响应体（resp.result.code）
-      let body: PlayUrlResponse = resp.result;
+      // 新签名直接返回响应体（请求失败/业务码非 0 时为 null，详见 ApiManager 日志）
+      let body: PlayUrlResponse | null = resp;
       if (body == null || body.code != 0 || body.data == null) {
         this.log('FAIL: playurl biz code=' + (body != null ? body.code : 'null')
           + ', msg=' + (body != null ? body.message : ''));
         return;
       }
       let playData: PlayUrl = body.data;
-      let dash: BiliDash | undefined = playData.dash;
+      let dash: BiliDash | null | undefined = playData.dash;
       if (dash == null || dash.video == null || dash.video.length === 0) {
         this.log('FAIL: no dash field, format=' + playData.format
           + ', durl=' + (playData.durl != null ? playData.durl.length : 0));
@@ -429,7 +428,7 @@ struct DashSpike {
     return rep;
   }
 
-  private buildAudioRep(s: BiliDashStream): string {
+  private buildAudioRep(s: BiliDashAudioStream): string {
     let sb: BiliSegmentBase | undefined = s.SegmentBase;
     if (sb == null) {
       this.log('skip audio rep id=' + s.id + ' (no SegmentBase)');

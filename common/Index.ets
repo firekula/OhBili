@@ -19,7 +19,7 @@ export { SearchDataSource } from './src/main/ets/model/SearchDataSource'
 export { VideoDataSource } from './src/main/ets/model/VideoDataSource'
 
 export { ArchiveStatResponse } from './src/main/ets/model/response/ArchiveStatResponse'
-export { PlayUrlResponse, PlayUrl, PlayUrlDurl, BiliDash, BiliDashStream, BiliSegmentBase } from './src/main/ets/model/response/PlayUrlResponse'
+export { PlayUrlResponse, PlayUrl, PlayUrlDurl, BiliDash, BiliDashStream, BiliDashAudioStream, BiliSegmentBase } from './src/main/ets/model/response/PlayUrlResponse'
 export { PopularResponse, PopularItem } from './src/main/ets/model/response/PopularResponse'
 export { RankingResponse, RankingItem } from './src/main/ets/model/response/RankingResponse'
 export { RecommendResponse, RecommendItem } from './src/main/ets/model/response/RecommendResponse'
