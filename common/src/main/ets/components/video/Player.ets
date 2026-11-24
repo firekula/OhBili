@@ -1151,6 +1151,62 @@ export struct PlayerView {
     });
   }
 
+  /**
+   * DASH 播放 error 自动回退 durl（R9：仅一次，防循环）。
+   * error 时 AvPlayer 内部实例已释放（error→reset→idle→release），
+   * 须同一 IPlayer 实例 re-initPlay 重建状态机（surface/控制器复用），
+   * 组件 initPlay 的 PREPARED 分支按 startAt 自动 seek 续播。
+   */
+  private fallbackFromDashOnError(): void {
+    this.mDashFallbackUsed = true;
+    this.mDashActive = false;
+    try {
+      // ERROR 回调在 AvPlayer reset 之前同步执行，currentTime 仍可读
+      let curMs: number = this.player.getCurrentTime();
+      if (curMs <= 0 && this.startAt > 0) {
+        // 起播早期 error：保住续播位置
+        curMs = this.startAt * 1000;
+      }
+      this.showLoadIng();
+      let qn: number = AppStorage.get<number>('ohBiliPlayQn') ?? 0;
+      ApiManager.getInstance().requestPlayUrl(this.bvid, this.cid, qn > 0 ? qn : undefined)
+        .then((resp: PlayUrlResponse) => {
+          if (this.mDestroyed) {
+            return;
+          }
+          if (resp == null || resp.data == null || resp.data.durl == null
+            || resp.data.durl.length === 0) {
+            // durl 也失败：彻底失败，与现状一致
+            this.hideLoadIng();
+            prompt.showToast({ message: "亲，视频播放异常，系统开小差咯" });
+            return;
+          }
+          this.updateQualityInfo(resp.data);
+          this.mPlayUrl = resp.data.durl[0].url.replace(/\\u0026/g, '&');
+          this.startAt = curMs / 1000.0;
+          BLog.i('BiliPlayer DASH error fallback to durl, resumeMs=' + curMs);
+          this.player.initPlay(this.mPlayContext).then(_ => {
+            if (this.mDestroyed) {
+              return;
+            }
+            this.initPlay(this.mPlayUrl);
+          });
+        })
+        .catch((err: BusinessError) => {
+          if (this.mDestroyed) {
+            return;
+          }
+          BLog.e('BiliPlayer DASH error fallback err: ' + JSON.stringify(err));
+          this.hideLoadIng();
+          prompt.showToast({ message: "亲，视频播放异常，系统开小差咯" });
+        });
+    } catch (err) {
+      BLog.e('BiliPlayer DASH error fallback exception: ' + JSON.stringify(err));
+      this.hideLoadIng();
+      prompt.showToast({ message: "亲，视频播放异常，系统开小差咯" });
+    }
+  }
+
   /** 服务端档位回退提示（如 html5 线路最高 720P） */
   private toastQualityFallback(gotQn: number, wantedQn: number): void {
     if (gotQn <= 0 || gotQn === wantedQn) {
@@ -1306,9 +1362,14 @@ export struct PlayerView {
           thisClass.hideLoadIng();
           thisClass.updateAVPlaybackState(false);
           thisClass.stopBackgroundTask();
-          prompt.showToast({
-            message: "亲，视频播放异常，系统开小差咯"
-          });
+          if (thisClass.mDashActive && !thisClass.mDashFallbackUsed) {
+            // DASH 播放异常：自动回退 durl 续播（不弹错误 toast）
+            thisClass.fallbackFromDashOnError();
+          } else {
+            prompt.showToast({
+              message: "亲，视频播放异常，系统开小差咯"
+            });
+          }
         } else if (status == IPlayStatus.DONE) {
           thisClass.showRePlay();
           thisClass.slideEnable = false;
