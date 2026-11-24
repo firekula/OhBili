@@ -105,3 +105,5 @@ export { VideoTopBar } from './src/main/ets/components/video/VideoTopBar'
 export { VideoActionRow } from './src/main/ets/components/video/VideoActionRow'
 export { PlayerView } from './src/main/ets/components/video/Player'
 
+export { DashMpdBuilder, DashMpdOptions } from './src/main/ets/player/DashMpdBuilder'
+
