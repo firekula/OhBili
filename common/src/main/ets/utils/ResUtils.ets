@@ -18,15 +18,21 @@ export class ResUtils {
     }
   }
 
+  /**
+   * 弹幕描边色：浅色弹幕配黑边、深色弹幕配白边。
+   * 必须返回带 alpha 的 ARGB 值——danmakuflamemaster 以 0 作为 textShadowColor
+   * "未设置"哨兵值（hasStroke 判定 textShadowColor != 0），纯黑 0x000000 会被
+   * 误判为未设置导致白色弹幕描边失效，故用 0xFF000000 / 0xFFFFFFFF。
+   */
   static getShadowColor(color: number): number {
     let red = (color >> 16) & 0xFF
     let green = (color >> 8) & 0xFF
     let blue = color & 0xFF
     let g = red * 0.299 + green * 0.587 + blue * 0.114;
     if (g >= 192) {
-      return 0x000000;
+      return 0xFF000000;
     } else {
-      return 0xffffff;
+      return 0xFFFFFFFF;
     }
   }
 }

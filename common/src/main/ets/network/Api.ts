@@ -712,6 +712,30 @@ export class DataService extends BaseService {
   }
 
   /**
+   * WBI 签名的网页版播放地址端点（1080P 取流用）
+   * x/player/wbi/playurl + fnval=1 返回 mp4 durl；platform=html5 线路封顶 720P，
+   * 登录 Cookie 下本端点 qn 可达 80（1080P 超清）
+   * @param qn 清晰度档位值（64/80 等）
+   * @param fnval 格式标记（1=mp4 durl）
+   * @param fourk 允许 4K 标记（1）
+   * @param wRid WBI 签名
+   * @param wts WBI 时间戳
+   */
+  @GET("x/player/wbi/playurl")
+  @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
+  async getPlayUrlWbiMp4(@Header('Cookie') cookie: string,
+                         @Query('bvid') bvid: string,
+                         @Query('cid') cid: number,
+                         @Query('qn') qn: number,
+                         @Query('fnval') fnval: number,
+                         @Query('fourk') fourk: number,
+                         @Query('w_rid') wRid: string,
+                         @Query('wts') wts: string):
+    Promise<Response<PlayUrlResponse>> {
+    return <Response<PlayUrlResponse>>{};
+  }
+
+  /**
    * 点赞/取消点赞视频（POST，csrf 鉴权，无需 WBI）
    * @param aid 视频 aid
    * @param like 1=点赞 2=取消点赞（业务码 65006=已点赞）
@@ -899,9 +923,11 @@ export class DataService extends BaseService {
   };
 
   /**
-   * 回复我的消息（需登录 Cookie）
+   * 回复我的消息（需登录 Cookie；WBI 签名端点）
    * @param id 游标（首页 0，翻页传上一页最后一条 id）
    * @param replyTime 回复时间游标（首页空串）
+   * @param wRid WBI 签名
+   * @param wts WBI 时间戳
    */
   @GET("x/msgfeed/reply")
   @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
@@ -910,15 +936,19 @@ export class DataService extends BaseService {
                         @Query('mobi_app') mobiApp: string,
                         @Query('platform') platform: string,
                         @Query('id') id: number,
-                        @Query('reply_time') replyTime: string):
+                        @Query('reply_time') replyTime: string,
+                        @Query('w_rid') wRid: string,
+                        @Query('wts') wts: string):
     Promise<Response<MsgFeedReplyResponse>> {
     return <Response<MsgFeedReplyResponse>>{};
   };
 
   /**
-   * @我的消息（需登录 Cookie）
+   * @我的消息（需登录 Cookie；WBI 签名端点）
    * @param id 游标（首页 0，翻页传上一页最后一条 id）
    * @param atTime @时间游标（首页空串）
+   * @param wRid WBI 签名
+   * @param wts WBI 时间戳
    */
   @GET("x/msgfeed/at")
   @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
@@ -927,15 +957,19 @@ export class DataService extends BaseService {
                      @Query('mobi_app') mobiApp: string,
                      @Query('platform') platform: string,
                      @Query('id') id: number,
-                     @Query('at_time') atTime: string):
+                     @Query('at_time') atTime: string,
+                     @Query('w_rid') wRid: string,
+                     @Query('wts') wts: string):
     Promise<Response<MsgFeedAtResponse>> {
     return <Response<MsgFeedAtResponse>>{};
   };
 
   /**
-   * 收到的赞消息（需登录 Cookie）
+   * 收到的赞消息（需登录 Cookie；WBI 签名端点）
    * @param id 游标（首页 0，翻页传上一页最后一条 id）
    * @param likeTime 点赞时间游标（首页空串）
+   * @param wRid WBI 签名
+   * @param wts WBI 时间戳
    */
   @GET("x/msgfeed/like")
   @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
@@ -944,19 +978,25 @@ export class DataService extends BaseService {
                        @Query('mobi_app') mobiApp: string,
                        @Query('platform') platform: string,
                        @Query('id') id: number,
-                       @Query('like_time') likeTime: string):
+                       @Query('like_time') likeTime: string,
+                       @Query('w_rid') wRid: string,
+                       @Query('wts') wts: string):
     Promise<Response<MsgFeedLikeResponse>> {
     return <Response<MsgFeedLikeResponse>>{};
   };
 
   /**
-   * 消息未读数（需登录 Cookie）：data { reply, at, like, sys }
+   * 消息未读数（需登录 Cookie；WBI 签名端点）：data { reply, at, like, sys }
+   * @param wRid WBI 签名
+   * @param wts WBI 时间戳
    */
   @GET("x/msgfeed/unread")
   @Headers({ 'User-Agent': ApiConstants.userAgent, 'Referer': ApiConstants.biliBase })
   async getMsgFeedUnread(@Header('Cookie') cookie: string,
                          @Query('build') build: number,
-                         @Query('mobi_app') mobiApp: string):
+                         @Query('mobi_app') mobiApp: string,
+                         @Query('w_rid') wRid: string,
+                         @Query('wts') wts: string):
     Promise<Response<MsgFeedUnreadResponse>> {
     return <Response<MsgFeedUnreadResponse>>{};
   };

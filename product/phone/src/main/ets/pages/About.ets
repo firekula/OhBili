@@ -93,7 +93,7 @@ struct About {
           SettingRow({
             icon: $r('app.media.ic_favorite'),
             title: '开源仓库',
-            info: 'https://gitee.com/wathinst/ohbili',
+            info: 'https://github.com/firekula/OhBili',
             showRightArrow: false,
             clickHandler: () => {
             }

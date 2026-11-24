@@ -1,7 +1,7 @@
 {
   "app": {
     "bundleName": "com.wathinst.ohbili",
-    "vendor": "wathinst",
+    "vendor": "Firekula",
     "versionCode": 1000002,
     "versionName": "0.3.0",
     "icon": "$media:app_icon",

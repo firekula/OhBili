@@ -100,7 +100,7 @@ struct FavDetail {
               ListItem() {
                 this.MediaRow(item, index)
               }
-            }, (item: FavMedia, index: number) => index + '_' + (item.bvid ?? item.id ?? 0))
+            }, (item: FavMedia, index: number) => (item.bvid ?? '') + '_' + (item.id ?? 0))
             if (!this.hasMore) {
               ListItem() {
                 Text("没有更多了")
@@ -140,7 +140,7 @@ struct FavDetail {
           .height(84)
           .borderRadius(6)
           .objectFit(ImageFit.Cover)
-          .alt($r('app.media.ic_comment_avatar_default'))
+          .backgroundColor($r('app.color.border'))
         if (isFavMediaInvalid(item)) {
           // 失效视频角标
           Text('已失效')

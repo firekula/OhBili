@@ -72,6 +72,15 @@ export abstract class IPlayer {
     /** 设置是否循环播放 */
     abstract setLoop(loop: boolean): void
 
+    /** 设置播放器实例音量（0.0-1.0，不影响系统音量；默认空实现） */
+    setVolume(volume: number): void {
+    }
+
+    /** 当前播放器实例音量（0.0-1.0；默认 1.0） */
+    getVolume(): number {
+        return 1.0;
+    }
+
     /** 播放中切换数据源（复用实例，用于清晰度切换；prepared 后由上层 seek 续播） */
     abstract switchSource(url: string, headers?: Map<string,string>): void
 

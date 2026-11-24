@@ -46,6 +46,11 @@ struct MessagePage {
   @State mAtLoaded: boolean = false;
   @State mLikeLoaded: boolean = false;
   @State mSysLoaded: boolean = false;
+  // 各 Tab 首屏错误态文案（空串表示无错误）
+  @State mReplyError: string = '';
+  @State mAtError: string = '';
+  @State mLikeError: string = '';
+  @State mSysError: string = '';
   private mReplySource: MessageFeedDataSource = new MessageFeedDataSource();
   private mAtSource: MessageFeedDataSource = new MessageFeedDataSource();
   private mLikeSource: MessageFeedDataSource = new MessageFeedDataSource();
@@ -119,10 +124,18 @@ struct MessagePage {
       .then((resp: ApiResponse<MsgFeedReplyResponse>) => {
         this.mReplyLoading = false;
         this.mReplyLoaded = true;
-        if (resp.code == -1 || resp.result == null || resp.result.code != 0
-          || resp.result.data == null) {
+        if (resp.code == -1 || resp.result == null) {
+          this.mReplyError = '网络异常，请检查网络后重试';
           return;
         }
+        if (resp.result.code != 0) {
+          this.mReplyError = '加载失败（' + resp.result.code + ' ' + (resp.result.message ?? '') + '）';
+          return;
+        }
+        if (resp.result.data == null) {
+          return;
+        }
+        this.mReplyError = '';
         let data = resp.result.data;
         let items = data.items ?? [];
         let entries: MessageEntry[] = [];
@@ -165,10 +178,18 @@ struct MessagePage {
       .then((resp: ApiResponse<MsgFeedAtResponse>) => {
         this.mAtLoading = false;
         this.mAtLoaded = true;
-        if (resp.code == -1 || resp.result == null || resp.result.code != 0
-          || resp.result.data == null) {
+        if (resp.code == -1 || resp.result == null) {
+          this.mAtError = '网络异常，请检查网络后重试';
           return;
         }
+        if (resp.result.code != 0) {
+          this.mAtError = '加载失败（' + resp.result.code + ' ' + (resp.result.message ?? '') + '）';
+          return;
+        }
+        if (resp.result.data == null) {
+          return;
+        }
+        this.mAtError = '';
         let data = resp.result.data;
         let items = data.items ?? [];
         let entries: MessageEntry[] = [];
@@ -211,10 +232,18 @@ struct MessagePage {
       .then((resp: ApiResponse<MsgFeedLikeResponse>) => {
         this.mLikeLoading = false;
         this.mLikeLoaded = true;
-        if (resp.code == -1 || resp.result == null || resp.result.code != 0
-          || resp.result.data == null) {
+        if (resp.code == -1 || resp.result == null) {
+          this.mLikeError = '网络异常，请检查网络后重试';
           return;
         }
+        if (resp.result.code != 0) {
+          this.mLikeError = '加载失败（' + resp.result.code + ' ' + (resp.result.message ?? '') + '）';
+          return;
+        }
+        if (resp.result.data == null) {
+          return;
+        }
+        this.mLikeError = '';
         let data = resp.result.data;
         let items = data.items ?? [];
         let entries: MessageEntry[] = [];
@@ -257,10 +286,18 @@ struct MessagePage {
       .then((resp: ApiResponse<SysNoticeResponse>) => {
         this.mSysLoading = false;
         this.mSysLoaded = true;
-        if (resp.code == -1 || resp.result == null || resp.result.code != 0
-          || resp.result.data == null) {
+        if (resp.code == -1 || resp.result == null) {
+          this.mSysError = '网络异常，请检查网络后重试';
           return;
         }
+        if (resp.result.code != 0) {
+          this.mSysError = '加载失败（' + resp.result.code + ' ' + (resp.result.message ?? '') + '）';
+          return;
+        }
+        if (resp.result.data == null) {
+          return;
+        }
+        this.mSysError = '';
         let items = resp.result.data.notify_list ?? [];
         let entries: MessageEntry[] = [];
         for (let i: number = 0; i < items.length; i++) {
@@ -340,9 +377,25 @@ struct MessagePage {
     if (source.totalCount() == 0) {
       Column() {
         if (this.isCurrentLoaded()) {
-          Text('暂无消息')
-            .fontSize(14)
-            .fontColor($r('app.color.text_secondary'))
+          if (this.currentError().length > 0) {
+            Text(this.currentError())
+              .fontSize(14)
+              .fontColor($r('app.color.text_secondary'))
+              .textAlign(TextAlign.Center)
+              .padding({ left: 32, right: 32 })
+            Button('重试')
+              .margin({ top: 16 })
+              .fontSize(14)
+              .height(36)
+              .padding({ left: 24, right: 24 })
+              .onClick(() => {
+                this.retryCurrent();
+              })
+          } else {
+            Text('暂无消息')
+              .fontSize(14)
+              .fontColor($r('app.color.text_secondary'))
+          }
         } else {
           LoadingProgress().width(36).height(36)
         }
@@ -429,6 +482,41 @@ struct MessagePage {
       return this.mLikeLoaded;
     }
     return this.mSysLoaded;
+  }
+
+  /**
+   * 当前 Tab 错误文案（首屏失败时非空，驱动错误态 UI）
+   */
+  private currentError(): string {
+    if (this.mCurrentTab == TAB_REPLY) {
+      return this.mReplyError;
+    }
+    if (this.mCurrentTab == TAB_AT) {
+      return this.mAtError;
+    }
+    if (this.mCurrentTab == TAB_LIKE) {
+      return this.mLikeError;
+    }
+    return this.mSysError;
+  }
+
+  /**
+   * 错误态重试：清空错误后重新拉取当前 Tab 首屏
+   */
+  private retryCurrent(): void {
+    if (this.mCurrentTab == TAB_REPLY) {
+      this.mReplyError = '';
+      this.loadReply(true);
+    } else if (this.mCurrentTab == TAB_AT) {
+      this.mAtError = '';
+      this.loadAt(true);
+    } else if (this.mCurrentTab == TAB_LIKE) {
+      this.mLikeError = '';
+      this.loadLike(true);
+    } else {
+      this.mSysError = '';
+      this.loadSys(true);
+    }
   }
 
   build() {

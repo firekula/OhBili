@@ -339,6 +339,23 @@ export class TaskManager {
     return response;
   }
 
+  async requestPlayUrlWbiMp4(cookie: string, bvid: string, cid: number,
+                             qn: number, wRid: string,
+                             wts: string): Promise<ApiResponse<PlayUrlResponse>> {
+    var task = new taskPool.Task(requestPlayUrlWbiMp4Task, cookie, bvid, cid, qn, wRid, wts);
+    var response = await taskPool.execute(task) as ApiResponse<PlayUrlResponse>;
+    return response;
+  }
+
+  // [SPIKE 一次性验证代码] DASH playurl（fnval=4048），验证后随 spike 一并移除
+  async requestPlayUrlWbiDash(cookie: string, bvid: string, cid: number,
+                              qn: number, wRid: string,
+                              wts: string): Promise<ApiResponse<PlayUrlResponse>> {
+    var task = new taskPool.Task(requestPlayUrlWbiDashTask, cookie, bvid, cid, qn, wRid, wts);
+    var response = await taskPool.execute(task) as ApiResponse<PlayUrlResponse>;
+    return response;
+  }
+
   async likeVideo(cookie: string, aid: number, like: number,
                   csrf: string): Promise<ApiResponse<EmptyResponse>> {
     var task = new taskPool.Task(likeVideoTask, cookie, aid, like, csrf);
@@ -422,28 +439,32 @@ export class TaskManager {
   }
 
   async requestMsgFeedReply(cookie: string, id: number,
-                            replyTime: string): Promise<ApiResponse<MsgFeedReplyResponse>> {
-    var task = new taskPool.Task(requestMsgFeedReplyTask, cookie, id, replyTime);
+                            replyTime: string, wRid: string,
+                            wts: string): Promise<ApiResponse<MsgFeedReplyResponse>> {
+    var task = new taskPool.Task(requestMsgFeedReplyTask, cookie, id, replyTime, wRid, wts);
     var response = await taskPool.execute(task) as ApiResponse<MsgFeedReplyResponse>;
     return response;
   }
 
   async requestMsgFeedAt(cookie: string, id: number,
-                         atTime: string): Promise<ApiResponse<MsgFeedAtResponse>> {
-    var task = new taskPool.Task(requestMsgFeedAtTask, cookie, id, atTime);
+                         atTime: string, wRid: string,
+                         wts: string): Promise<ApiResponse<MsgFeedAtResponse>> {
+    var task = new taskPool.Task(requestMsgFeedAtTask, cookie, id, atTime, wRid, wts);
     var response = await taskPool.execute(task) as ApiResponse<MsgFeedAtResponse>;
     return response;
   }
 
   async requestMsgFeedLike(cookie: string, id: number,
-                           likeTime: string): Promise<ApiResponse<MsgFeedLikeResponse>> {
-    var task = new taskPool.Task(requestMsgFeedLikeTask, cookie, id, likeTime);
+                           likeTime: string, wRid: string,
+                           wts: string): Promise<ApiResponse<MsgFeedLikeResponse>> {
+    var task = new taskPool.Task(requestMsgFeedLikeTask, cookie, id, likeTime, wRid, wts);
     var response = await taskPool.execute(task) as ApiResponse<MsgFeedLikeResponse>;
     return response;
   }
 
-  async requestMsgFeedUnread(cookie: string): Promise<ApiResponse<MsgFeedUnreadResponse>> {
-    var task = new taskPool.Task(requestMsgFeedUnreadTask, cookie);
+  async requestMsgFeedUnread(cookie: string, wRid: string,
+                             wts: string): Promise<ApiResponse<MsgFeedUnreadResponse>> {
+    var task = new taskPool.Task(requestMsgFeedUnreadTask, cookie, wRid, wts);
     var response = await taskPool.execute(task) as ApiResponse<MsgFeedUnreadResponse>;
     return response;
   }
@@ -1363,6 +1384,54 @@ async function requestPlayUrlWithQnTask(cookie: string, bvid: string, cid: numbe
   return new ApiResponse(result, code, message);
 }
 
+async function requestPlayUrlWbiMp4Task(cookie: string, bvid: string, cid: number,
+                                        qn: number, wRid: string,
+                                        wts: string): Promise<ApiResponse<PlayUrlResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: PlayUrlResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    // x/player/wbi/playurl + fnval=1：WBI 签名 mp4 durl 线路，登录态 qn 可达 80（1080P）
+    let resp: Response<PlayUrlResponse> = await dataService.getPlayUrlWbiMp4(cookie, bvid, cid,
+      qn, 1, 1, wRid, wts);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
+// [SPIKE 一次性验证代码] x/player/wbi/playurl + fnval=4048：DASH 音视频分离流
+async function requestPlayUrlWbiDashTask(cookie: string, bvid: string, cid: number,
+                                         qn: number, wRid: string,
+                                         wts: string): Promise<ApiResponse<PlayUrlResponse>> {
+  "use concurrent"
+  let code: number = 0;
+  let result: PlayUrlResponse;
+  let message: string = "";
+  try {
+    let dataService = new ServiceBuilder()
+      .setEndpoint(ApiConstants.apiBase)
+      .build(DataService);
+    let resp: Response<PlayUrlResponse> = await dataService.getPlayUrlWbiMp4(cookie, bvid, cid,
+      qn, 4048, 1, wRid, wts);
+    code = resp.code();
+    message = resp.message();
+    result = resp.result;
+  } catch (err) {
+    code = -1;
+    message = err + "";
+  }
+  return new ApiResponse(result, code, message);
+}
+
 async function likeVideoTask(cookie: string, aid: number, like: number,
                              csrf: string): Promise<ApiResponse<EmptyResponse>> {
   "use concurrent"
@@ -1627,7 +1696,8 @@ async function requestMyFollowBangumiTask(cookie: string, vmid: number, type: nu
 }
 
 async function requestMsgFeedReplyTask(cookie: string, id: number,
-                                       replyTime: string): Promise<ApiResponse<MsgFeedReplyResponse>> {
+                                       replyTime: string, wRid: string,
+                                       wts: string): Promise<ApiResponse<MsgFeedReplyResponse>> {
   "use concurrent"
   let code: number = 0;
   let result: MsgFeedReplyResponse;
@@ -1637,7 +1707,7 @@ async function requestMsgFeedReplyTask(cookie: string, id: number,
       .setEndpoint(ApiConstants.apiBase)
       .build(DataService);
     let resp: Response<MsgFeedReplyResponse> = await dataService.getMsgFeedReply(cookie,
-      0, 'web', 'web', id, replyTime);
+      0, 'web', 'web', id, replyTime, wRid, wts);
     code = resp.code();
     message = resp.message();
     result = resp.result;
@@ -1649,7 +1719,8 @@ async function requestMsgFeedReplyTask(cookie: string, id: number,
 }
 
 async function requestMsgFeedAtTask(cookie: string, id: number,
-                                    atTime: string): Promise<ApiResponse<MsgFeedAtResponse>> {
+                                    atTime: string, wRid: string,
+                                    wts: string): Promise<ApiResponse<MsgFeedAtResponse>> {
   "use concurrent"
   let code: number = 0;
   let result: MsgFeedAtResponse;
@@ -1659,7 +1730,7 @@ async function requestMsgFeedAtTask(cookie: string, id: number,
       .setEndpoint(ApiConstants.apiBase)
       .build(DataService);
     let resp: Response<MsgFeedAtResponse> = await dataService.getMsgFeedAt(cookie,
-      0, 'web', 'web', id, atTime);
+      0, 'web', 'web', id, atTime, wRid, wts);
     code = resp.code();
     message = resp.message();
     result = resp.result;
@@ -1671,7 +1742,8 @@ async function requestMsgFeedAtTask(cookie: string, id: number,
 }
 
 async function requestMsgFeedLikeTask(cookie: string, id: number,
-                                      likeTime: string): Promise<ApiResponse<MsgFeedLikeResponse>> {
+                                      likeTime: string, wRid: string,
+                                      wts: string): Promise<ApiResponse<MsgFeedLikeResponse>> {
   "use concurrent"
   let code: number = 0;
   let result: MsgFeedLikeResponse;
@@ -1681,7 +1753,7 @@ async function requestMsgFeedLikeTask(cookie: string, id: number,
       .setEndpoint(ApiConstants.apiBase)
       .build(DataService);
     let resp: Response<MsgFeedLikeResponse> = await dataService.getMsgFeedLike(cookie,
-      0, 'web', 'web', id, likeTime);
+      0, 'web', 'web', id, likeTime, wRid, wts);
     code = resp.code();
     message = resp.message();
     result = resp.result;
@@ -1692,7 +1764,8 @@ async function requestMsgFeedLikeTask(cookie: string, id: number,
   return new ApiResponse(result, code, message);
 }
 
-async function requestMsgFeedUnreadTask(cookie: string): Promise<ApiResponse<MsgFeedUnreadResponse>> {
+async function requestMsgFeedUnreadTask(cookie: string, wRid: string,
+                                        wts: string): Promise<ApiResponse<MsgFeedUnreadResponse>> {
   "use concurrent"
   let code: number = 0;
   let result: MsgFeedUnreadResponse;
@@ -1701,7 +1774,8 @@ async function requestMsgFeedUnreadTask(cookie: string): Promise<ApiResponse<Msg
     let dataService = new ServiceBuilder()
       .setEndpoint(ApiConstants.apiBase)
       .build(DataService);
-    let resp: Response<MsgFeedUnreadResponse> = await dataService.getMsgFeedUnread(cookie, 0, 'web');
+    let resp: Response<MsgFeedUnreadResponse> = await dataService.getMsgFeedUnread(cookie,
+      0, 'web', wRid, wts);
     code = resp.code();
     message = resp.message();
     result = resp.result;

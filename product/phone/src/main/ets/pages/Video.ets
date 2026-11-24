@@ -56,9 +56,10 @@ struct VideoPlayer {
 
   aboutToAppear() {
     // 全屏态推入的视频页（关联视频在横屏全屏下顶入）保持横屏窗口不回竖；
-    // 非全屏进入则锁定竖屏，防止传感器旋转
+    // 非全屏进入则启用跟随系统自动旋转：传感器转屏 → 窗口旋转 →
+    // PlayerView.onWindowSizeChange 自动进/退全屏（原 lockPortrait 导致旋转无响应）
     if (!this.playerFullScreen) {
-      WindowManager.lockPortrait();
+      WindowManager.enableAutoRotation();
     }
     // 视频页沉浸式改为延迟应用（onPageShow + 转场动画时长后）：
     // aboutToAppear 立即改窗口布局会让底部首页在转场开始前重排（列表跳回顶部）
@@ -238,14 +239,12 @@ struct VideoPlayer {
     let cnt: number = AppStorage.get<number>('videoPageCount') ?? 1;
     AppStorage.setOrCreate('videoPageCount', cnt - 1);
     if (cnt - 1 <= 0) {
-      // 离开视频页兜底恢复系统栏与退出沉浸式布局（全屏状态下页面直接销毁的场景）
+      // 离开视频页栈兜底恢复系统栏与退出沉浸式布局（全屏状态下页面直接销毁的场景）
       WindowManager.setFullScreen(true);
       ThemeUtil.applyThemeBars();
-      if (!this.isPortrait) {
-        // 窗口仍横屏（绕过 onBackPress 的销毁路径）：旋转回竖屏并同步方向状态
-        WindowManager.rotateWindowPortrait();
-        this.isPortrait = true;
-      }
+      // 无条件锁回竖屏：自动旋转模式下窗口可能停留在任意方向
+      WindowManager.lockPortrait();
+      this.isPortrait = true;
     }
     DataSourceManager.deleteRelatedMapSource(this.vInfo.bvid);
     DataSourceManager.deleteReplyMapSource(this.vInfo.bvid);
@@ -286,7 +285,7 @@ struct VideoPlayer {
   build() {
     Column() {
       PlayerView({ cid: this.vInfo.cid, bvid: this.vInfo.bvid, pageState: $pageState,
-        startAt: this.startAt, localPath: this.localPath })
+        startAt: this.startAt, localPath: this.localPath, videoTitle: this.vInfo.title ?? '' })
       if (this.isPortrait && !this.playerFullScreen) {
         if (this.replyItem != null) {
           Column() {

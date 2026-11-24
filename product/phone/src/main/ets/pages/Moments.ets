@@ -35,16 +35,18 @@ export struct MomentsView {
   private hasMores: boolean[] = [true, true];
   /** 各标签是否已成功发起过加载（防重复触发；切回已加载标签不重拉首屏） */
   private loadedOnces: boolean[] = [false, false];
-  /** 首屏加载中 */
-  @State isLoading: boolean = false;
-  /** 首屏请求失败（网络异常等） */
-  @State loadFailed: boolean = false;
-  /** 登录失效（业务码 -101） */
-  @State loginExpired: boolean = false;
+  /** 各标签首屏加载中 */
+  @State isLoadingArr: boolean[] = [false, false];
+  /** 各标签首屏请求失败（网络异常等） */
+  @State loadFailedArr: boolean[] = [false, false];
+  /** 各标签登录失效（业务码 -101） */
+  @State loginExpiredArr: boolean[] = [false, false];
 
   aboutToAppear() {
     if (this.loginState) {
-      this.loadFirst();
+      // 预取两个标签首屏，切换标签无需等待
+      this.loadFirst(0);
+      this.loadFirst(1);
     }
   }
 
@@ -57,9 +59,8 @@ export struct MomentsView {
       this.loadedOnces = [false, false];
       return;
     }
-    if (!this.loadedOnces[this.currentTab]) {
-      this.loadFirst();
-    }
+    this.loadFirst(0);
+    this.loadFirst(1);
   }
 
   build() {
@@ -77,93 +78,19 @@ export struct MomentsView {
           router.pushUrl({ url: "pages/Login" })
         })
       } else {
-        if (this.isLoading && this.currentSource().totalCount() == 0) {
-          // 首屏加载态
-          Column() {
-            LoadingProgress()
-              .width(36)
-              .height(36)
-            Text(this.currentTab == 1 ? "视频动态加载中..." : "动态加载中...")
-              .fontSize(14)
-              .fontColor($r('app.color.text_secondary'))
-              .margin({ top: 12 })
-          }
-          .width('100%')
-          .layoutWeight(1)
-          .justifyContent(FlexAlign.Center)
-        } else if (this.loginExpired && this.currentSource().totalCount() == 0) {
-          // 登录失效：引导重新登录，非死循环加载
-          Column() {
-            Text("登录已失效").fontSize(16).fontColor($r('app.color.text_primary')).fontWeight(FontWeight.Medium).margin({ top: 48 })
-            Text("请重新登录后查看动态").fontSize(14).fontColor($r('app.color.text_secondary')).margin({ top: 12 })
-            Button("重新登录").width(240).margin({ top: 16 }).onClick(() => {
-              router.pushUrl({ url: "pages/Login" })
-            })
-          }
-          .width('100%')
-          .layoutWeight(1)
-          .justifyContent(FlexAlign.Center)
-        } else if (this.loadFailed && this.currentSource().totalCount() == 0) {
-          // 请求失败错误态，可重试
-          Column() {
-            Text("动态加载失败").fontSize(16).fontColor($r('app.color.text_primary')).fontWeight(FontWeight.Medium).margin({ top: 48 })
-            Text("请检查网络后重试").fontSize(14).fontColor($r('app.color.text_secondary')).margin({ top: 12 })
-            Button("重试").width(240).margin({ top: 16 }).onClick(() => {
-              this.loadFirst();
-            })
-          }
-          .width('100%')
-          .layoutWeight(1)
-          .justifyContent(FlexAlign.Center)
-        } else if (this.currentSource().totalCount() == 0) {
-          // 空态（如新账号无关注）
-          Column() {
-            Text(this.currentTab == 1 ? "暂无视频动态" : "暂无动态")
-              .fontSize(16).fontColor($r('app.color.text_primary')).fontWeight(FontWeight.Medium).margin({ top: 48 })
-            Text("去关注喜欢的UP主吧").fontSize(14).fontColor($r('app.color.text_secondary')).margin({ top: 12 })
-          }
-          .width('100%')
-          .layoutWeight(1)
-          .justifyContent(FlexAlign.Center)
-        } else if (this.currentTab == 0) {
-          HomePullToRefresh({
-            // 必传项，列表组件所绑定的数据
-            data: $data,
-            // 必传项，需绑定传入主体布局内的列表或宫格组件
-            scroller: this.scrollers[0],
-            // 必传项，自定义主体布局，内部有列表或宫格组件
-            customList: this.getAllListView,
-            // 下拉刷新回调
-            onRefresh: () => {
-              return this.refresh();
-            },
-            // 上拉加载更多回调
-            onLoadMore: () => {
-              return this.loadMore();
-            },
-            customLoad: null,
-            customRefresh: null,
-          })
-        } else {
-          HomePullToRefresh({
-            // 必传项，列表组件所绑定的数据
-            data: $data,
-            // 必传项，需绑定传入主体布局内的列表或宫格组件
-            scroller: this.scrollers[1],
-            // 必传项，自定义主体布局，内部有列表或宫格组件
-            customList: this.getVideoListView,
-            // 下拉刷新回调
-            onRefresh: () => {
-              return this.refresh();
-            },
-            // 上拉加载更多回调
-            onLoadMore: () => {
-              return this.loadMore();
-            },
-            customLoad: null,
-            customRefresh: null,
-          })
+        // 双标签同驻：Swiper 承载两页，切换不销毁列表、保留滚动位置
+        Swiper() {
+          this.pageContent(0)
+          this.pageContent(1)
         }
+        .width('100%')
+        .layoutWeight(1)
+        .index(this.currentTab)
+        .loop(false)
+        .indicator(false)
+        .onChange((index: number) => {
+          this.onSwiperChange(index);
+        })
       }
     }.width('100%').height('100%').backgroundColor($r('app.color.page_bg'))
   }
@@ -200,7 +127,103 @@ export struct MomentsView {
   }
 
   /**
-   * 切换标签：未加载过的标签拉首屏；已加载的保留列表（可下拉刷新）
+   * 单个标签页：加载中/登录失效/失败/空态/列表，按该标签独立状态渲染
+   */
+  @Builder
+  private pageContent(tab: number) {
+    if (this.isLoadingArr[tab] && this.sourceOf(tab).totalCount() == 0) {
+      // 首屏加载态
+      Column() {
+        LoadingProgress()
+          .width(36)
+          .height(36)
+        Text(tab == 1 ? "视频动态加载中..." : "动态加载中...")
+          .fontSize(14)
+          .fontColor($r('app.color.text_secondary'))
+          .margin({ top: 12 })
+      }
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Center)
+    } else if (this.loginExpiredArr[tab] && this.sourceOf(tab).totalCount() == 0) {
+      // 登录失效：引导重新登录，非死循环加载
+      Column() {
+        Text("登录已失效").fontSize(16).fontColor($r('app.color.text_primary')).fontWeight(FontWeight.Medium).margin({ top: 48 })
+        Text("请重新登录后查看动态").fontSize(14).fontColor($r('app.color.text_secondary')).margin({ top: 12 })
+        Button("重新登录").width(240).margin({ top: 16 }).onClick(() => {
+          router.pushUrl({ url: "pages/Login" })
+        })
+      }
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Center)
+    } else if (this.loadFailedArr[tab] && this.sourceOf(tab).totalCount() == 0) {
+      // 请求失败错误态，可重试
+      Column() {
+        Text("动态加载失败").fontSize(16).fontColor($r('app.color.text_primary')).fontWeight(FontWeight.Medium).margin({ top: 48 })
+        Text("请检查网络后重试").fontSize(14).fontColor($r('app.color.text_secondary')).margin({ top: 12 })
+        Button("重试").width(240).margin({ top: 16 }).onClick(() => {
+          this.loadFirst(tab);
+        })
+      }
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Center)
+    } else if (this.sourceOf(tab).totalCount() == 0) {
+      // 空态（如新账号无关注）
+      Column() {
+        Text(tab == 1 ? "暂无视频动态" : "暂无动态")
+          .fontSize(16).fontColor($r('app.color.text_primary')).fontWeight(FontWeight.Medium).margin({ top: 48 })
+        Text("去关注喜欢的UP主吧").fontSize(14).fontColor($r('app.color.text_secondary')).margin({ top: 12 })
+      }
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Center)
+    } else {
+      if (tab == 0) {
+        HomePullToRefresh({
+          // 必传项，列表组件所绑定的数据
+          data: $data,
+          // 必传项，需绑定传入主体布局内的列表或宫格组件
+          scroller: this.scrollers[0],
+          // 必传项，自定义主体布局，内部有列表或宫格组件
+          customList: this.getAllListView,
+          // 下拉刷新回调
+          onRefresh: () => {
+            return this.refresh();
+          },
+          // 上拉加载更多回调
+          onLoadMore: () => {
+            return this.loadMore();
+          },
+          customLoad: null,
+          customRefresh: null,
+        })
+      } else {
+        HomePullToRefresh({
+          // 必传项，列表组件所绑定的数据
+          data: $data,
+          // 必传项，需绑定传入主体布局内的列表或宫格组件
+          scroller: this.scrollers[1],
+          // 必传项，自定义主体布局，内部有列表或宫格组件
+          customList: this.getVideoListView,
+          // 下拉刷新回调
+          onRefresh: () => {
+            return this.refresh();
+          },
+          // 上拉加载更多回调
+          onLoadMore: () => {
+            return this.loadMore();
+          },
+          customLoad: null,
+          customRefresh: null,
+        })
+      }
+    }
+  }
+
+  /**
+   * 点击标签切换（Swiper 跟随 index 动画切换）；未加载过的标签拉首屏
    */
   private switchTab(tab: number): void {
     if (tab == this.currentTab) {
@@ -208,15 +231,18 @@ export struct MomentsView {
     }
     this.currentTab = tab;
     if (!this.loadedOnces[tab]) {
-      this.loadFirst();
+      this.loadFirst(tab);
     }
   }
 
   /**
-   * 当前标签的数据源
+   * Swiper 滑动切换回调：同步当前标签；未加载过的标签拉首屏
    */
-  private currentSource(): DynamicDataSource {
-    return this.sourceOf(this.currentTab);
+  private onSwiperChange(index: number): void {
+    this.currentTab = index;
+    if (!this.loadedOnces[index]) {
+      this.loadFirst(index);
+    }
   }
 
   private sourceOf(tab: number): DynamicDataSource {
@@ -225,14 +251,13 @@ export struct MomentsView {
   }
 
   /**
-   * 首屏加载（刷新当前标签第一页）
+   * 指定标签首屏加载（刷新该标签第一页）
    */
-  private loadFirst(): void {
-    let tab: number = this.currentTab;
+  private loadFirst(tab: number): void {
     this.loadedOnces[tab] = true;
-    this.isLoading = true;
-    this.loadFailed = false;
-    this.loginExpired = false;
+    this.isLoadingArr[tab] = true;
+    this.loadFailedArr[tab] = false;
+    this.loginExpiredArr[tab] = false;
     this.fetchFirstPage(tab);
   }
 
@@ -262,14 +287,14 @@ export struct MomentsView {
         break;
       }
     }
-    this.isLoading = false;
+    this.isLoadingArr[tab] = false;
     if (success) {
       this.feedOffsets[tab] = offset;
       this.hasMores[tab] = hasMore;
     } else if (expired) {
-      this.loginExpired = true;
+      this.loginExpiredArr[tab] = true;
     } else {
-      this.loadFailed = true;
+      this.loadFailedArr[tab] = true;
     }
   }
 
@@ -283,11 +308,11 @@ export struct MomentsView {
     if (result.success) {
       this.feedOffsets[tab] = result.nextOffset;
       this.hasMores[tab] = result.hasMore;
-      this.loginExpired = false;
+      this.loginExpiredArr[tab] = false;
       return '';
     }
     if (result.loginExpired) {
-      this.loginExpired = true;
+      this.loginExpiredArr[tab] = true;
     }
     return '刷新失败';
   }
@@ -311,7 +336,7 @@ export struct MomentsView {
         await ApiManager.getInstance().requestDynamicFeed(offset, false, videoOnly);
       if (!result.success) {
         if (result.loginExpired) {
-          this.loginExpired = true;
+          this.loginExpiredArr[tab] = true;
           return '登录已失效';
         }
         return '加载失败';

@@ -153,6 +153,39 @@ export class WindowManager {
     }
 
     /**
+     * 挖孔/刘海左右避让宽度（px）：横屏时挖孔位于左右长边，取两侧避让区较大值；
+     * 全屏交互元素（锁定按钮/控制栏）避让挖孔用
+     */
+    static getCutoutSideAvoidWidth(): number {
+        let win = WindowManager.getMainWindow();
+        if (win != null) {
+            try {
+                let avoid = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_CUTOUT);
+                return Math.max(avoid.leftRect.width, avoid.rightRect.width);
+            } catch (err) {
+                console.error('WindowManager getCutoutSideAvoidWidth failed: ' + JSON.stringify(err));
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * 挖孔/刘海顶部避让高度（px）：竖屏全屏（B站样式）时顶部控制栏避让挖孔用
+     */
+    static getCutoutTopAvoidHeight(): number {
+        let win = WindowManager.getMainWindow();
+        if (win != null) {
+            try {
+                let avoid = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_CUTOUT);
+                return avoid.topRect.height;
+            } catch (err) {
+                console.error('WindowManager getCutoutTopAvoidHeight failed: ' + JSON.stringify(err));
+            }
+        }
+        return 0;
+    }
+
+    /**
      * 旋转窗口回竖屏（退出横屏全屏）：布局恢复由 windowSizeChange 回调跟随，
      * 不在旋转前预先改布局（setPreferredOrientation 存在延迟，先改布局会造成割裂动画）
      */
@@ -165,5 +198,52 @@ export class WindowManager {
      */
     static lockPortrait(): void {
         WindowManager.rotateWindowPortrait();
+    }
+
+    /**
+     * 启用跟随系统自动旋转（受控旋转：尊重系统自动旋转开关）：
+     * 视频页进入时使用，传感器转屏后由 windowSizeChange 自动进/退全屏
+     */
+    static enableAutoRotation(): void {
+        WindowManager.changeWindowDirection(window.Orientation.AUTO_ROTATION_RESTRICTED);
+    }
+
+    /**
+     * 获取当前窗口亮度（0.0-1.0），主窗口不可用或读取失败返回 -1
+     */
+    static getWindowBrightness(): number {
+        let win = WindowManager.getMainWindow();
+        if (win != null) {
+            try {
+                let v: number = win.getWindowProperties().brightness;
+                if (v != null && v >= 0) {
+                    return Math.min(v, 1.0);
+                }
+            } catch (err) {
+                console.error('WindowManager getWindowBrightness failed: ' + JSON.stringify(err));
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * 设置窗口亮度（0.0-1.0，超出范围截断）
+     */
+    static setWindowBrightness(brightness: number): void {
+        let win = WindowManager.getMainWindow();
+        if (win == null) {
+            return;
+        }
+        let v: number = brightness;
+        if (v < 0.0) {
+            v = 0.0;
+        } else if (v > 1.0) {
+            v = 1.0;
+        }
+        try {
+            win.setWindowBrightness(v);
+        } catch (err) {
+            console.error('WindowManager setWindowBrightness failed: ' + JSON.stringify(err));
+        }
     }
 }

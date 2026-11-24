@@ -115,7 +115,7 @@ struct WatchLater {
               ListItem() {
                 this.ItemRow(item, index)
               }
-            }, (item: WatchLaterItem, index: number) => index + '_' + (item.aid ?? 0) + '_' + (item.bvid ?? ''))
+            }, (item: WatchLaterItem, index: number) => (item.aid ?? 0) + '_' + (item.bvid ?? ''))
           }
           .width('100%')
           .height('100%')
@@ -144,7 +144,7 @@ struct WatchLater {
           .height(84)
           .borderRadius(6)
           .objectFit(ImageFit.Cover)
-          .alt($r('app.media.ic_comment_avatar_default'))
+          .backgroundColor($r('app.color.border'))
         if (isWatchLaterItemInvalid(item)) {
           // 失效视频角标
           Text('已失效')

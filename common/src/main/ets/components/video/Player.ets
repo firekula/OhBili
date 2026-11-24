@@ -13,6 +13,10 @@
 import prompt from '@ohos.prompt';
 import router from '@ohos.router';
 import window from '@ohos.window';
+import { avSession } from '@kit.AVSessionKit';
+import { backgroundTaskManager } from '@kit.BackgroundTasksKit';
+import { WantAgent, wantAgent } from '@kit.AbilityKit';
+import { BusinessError } from '@kit.BasicServicesKit';
 import { IPlayer } from '../../player/IPlayer';
 import { AvPlayer } from '../../player/AvPlayer';
 import { IjkPlayer } from '../../player/IjkPlayer';
@@ -39,7 +43,7 @@ import { DanmakuParser } from '../../model/proto/DanmakuParser';
 import { BLog } from '../../utils/BLog';
 import { WindowManager } from '../../utils/WindowManager';
 import { ApiManager } from '../../network/ApiManager';
-import { PlayUrlResponse } from '../../model/response/PlayUrlResponse';
+import { PlayUrl, PlayUrlResponse } from '../../model/response/PlayUrlResponse';
 import { ApiResponse } from '../../model/response/Response';
 import { VideoPartsResponse } from '../../model/response/VideoPartsResponse';
 import { ApiConstants } from '../../network/ApiConstants';
@@ -48,6 +52,8 @@ import { NavHelper } from '../../utils/NavHelper';
 
 let PROGRESS_MAX_VALUE: number = 100;
 let DANMAKU_TIME: number = 360000;
+/** 竖向滑动调节亮度/音量的满程距离（vp）：滑动该距离对应 0-100% */
+let GESTURE_VPAN_RANGE: number = 350;
 // 统一使用系统 AvPlayer：
 // 1. ijkplayer 的 HAR 只提供 arm32/arm64 原生库，无 x86_64 版本（模拟器本就不可用）；
 // 2. 其 2022 年构建的原生渲染层（libijksdl）在 HarmonyOS 7.0 新 GPU 驱动上
@@ -89,6 +95,9 @@ export struct PlayerView {
   /** 窗口尺寸（vp）：窗口旋转后由 windowSizeChange 更新，全屏布局跟随窗口实际尺寸 */
   @State mWinW: number = 0;
   @State mWinH: number = 0;
+  /** 挖孔/刘海避让（vp）：全屏时交互元素避让（横屏取左右避让宽、竖屏取顶部避让高） */
+  @State mCutoutSidePad: number = 0;
+  @State mCutoutTopPad: number = 0;
   private mWindow: window.Window | null = null;
   /** 待进入全屏意图：旋转窗口前置位，由 windowSizeChange 消费，
    * 用于区分"旋转到竖屏是进入竖屏视频全屏"还是"退出横屏全屏"（平板横屏等场景） */
@@ -137,6 +146,14 @@ export struct PlayerView {
   @State mDanmakuSending: boolean = false;
   /** 视频 aid（发弹幕接口需要，懒解析缓存） */
   private mAid: number = 0;
+  /** 视频标题（AVSession 元数据展示用） */
+  private videoTitle: string = '';
+  /** 媒体会话（媒体播控中心播控，后台播放必备） */
+  private mAVSession: avSession.AVSession | null = null;
+  /** audioPlayback 长时任务运行中 */
+  private mBgTaskRunning: boolean = false;
+  /** onPageHide 延迟判定定时器 id（区分页内跳转/应用退后台） */
+  private mHideCheckTimer: number = -1;
 
   private createParser(source: ProtoSource): BaseDanmakuParser {
     let parser: BaseDanmakuParser = new DanmakuParser();
@@ -149,6 +166,13 @@ export struct PlayerView {
     switch (this.pageState) {
       case "onPageShow":
         this.mActive = true;
+        // 取消未决的隐藏判定（快速后台往返/页内往返场景）
+        if (this.mHideCheckTimer >= 0) {
+          clearTimeout(this.mHideCheckTimer);
+          this.mHideCheckTimer = -1;
+        }
+        // 回前台：释放后台长时任务（前台播放无需保活）
+        this.stopBackgroundTask();
         this.player.setAutoPlay(true);
         if (!this.mFirst) {
           if (this.bvid == this.player.getPlayId()) {
@@ -177,14 +201,34 @@ export struct PlayerView {
         }
         break;
       case "onPageHide":
-        // 页面被覆盖（进入下一个视频页/其他页面）或退后台：停止自动起播并暂停当前播放，
-        // 防止上一个视频在后台继续出声
+        // 页面隐藏：onPageHide 在"页内跳转"与"应用退后台"两种场景都会触发，且
+        // ability onBackground 晚于 onPageHide 到达，延迟 200ms 读标志区分：
+        //   应用退后台 → 不暂停，申请 audioPlayback 长时任务后台续播；
+        //   页内跳转   → 暂停并记忆恢复（防止上一个视频继续出声）
         this.mActive = false;
-        this.player.setAutoPlay(false);
-        if (this.mState == IPlayStatus.PLAY) {
-          this.mResumeOnShow = true;
-          this.player.pause();
+        if (this.mHideCheckTimer >= 0) {
+          clearTimeout(this.mHideCheckTimer);
         }
+        this.mHideCheckTimer = setTimeout(() => {
+          this.mHideCheckTimer = -1;
+          if (this.mDestroyed) {
+            return;
+          }
+          let appBackground: boolean = AppStorage.get<boolean>('ohBiliAbilityBackground') ?? false;
+          if (appBackground) {
+            // 应用退后台：正在播放则申请长时任务保持后台出声
+            if (this.mState == IPlayStatus.PLAY) {
+              this.startBackgroundTask();
+            }
+            return;
+          }
+          // 页内跳转：与原行为一致，停止自动起播并暂停当前播放
+          this.player.setAutoPlay(false);
+          if (this.mState == IPlayStatus.PLAY) {
+            this.mResumeOnShow = true;
+            this.player.pause();
+          }
+        }, 200);
         break;
       case "aboutToDisappear":
         this.releasePlayer();
@@ -208,16 +252,158 @@ export struct PlayerView {
     this.mDestroyed = true;
     this.mActive = false;
     BLog.i('BiliPlayer releasePlayer bvid:' + this.bvid);
+    if (this.mHideCheckTimer >= 0) {
+      clearTimeout(this.mHideCheckTimer);
+      this.mHideCheckTimer = -1;
+    }
     if (this.mWindow != null) {
       this.mWindow.off('windowSizeChange', this.mSizeCb);
       this.mWindow = null;
     }
     this.player.setAutoPlay(false);
     this.player.release();
+    this.stopBackgroundTask();
+    this.destroyAVSession();
     if (this.mIsFullScreen) {
       // 状态清理（页面销毁兜底），窗口/系统栏恢复由页面侧处理
       this.mIsFullScreen = false;
     }
+  }
+
+  /** 应用在后台且开始/恢复播放：申请 audioPlayback 长时任务后台续播 */
+  private startBackgroundTaskIfBackground(): void {
+    let appBackground: boolean = AppStorage.get<boolean>('ohBiliAbilityBackground') ?? false;
+    if (appBackground) {
+      this.startBackgroundTask();
+    }
+  }
+
+  /**
+   * 申请 audioPlayback 长时任务（应用退后台续播）。
+   * 须与 AVSession 配套：无媒体会话时长时任务会被系统挂起（不保活）。
+   */
+  private startBackgroundTask(): void {
+    if (this.mBgTaskRunning || this.mDestroyed) {
+      return;
+    }
+    let ctx = globalThis.appContext;
+    if (ctx == undefined) {
+      return;
+    }
+    this.mBgTaskRunning = true;
+    let wantAgentInfo: wantAgent.WantAgentInfo = {
+      wants: [{
+        bundleName: ctx.abilityInfo.bundleName,
+        abilityName: ctx.abilityInfo.name
+      }],
+      operationType: wantAgent.OperationType.START_ABILITY,
+      requestCode: 0,
+      wantAgentFlags: [wantAgent.WantAgentFlags.UPDATE_PRESENT_FLAG]
+    };
+    wantAgent.getWantAgent(wantAgentInfo)
+      .then((agent: WantAgent) => {
+        return backgroundTaskManager.startBackgroundRunning(ctx,
+          backgroundTaskManager.BackgroundMode.AUDIO_PLAYBACK, agent);
+      })
+      .then(() => {
+        BLog.i('BiliPlayer background task started');
+      })
+      .catch((err: BusinessError) => {
+        this.mBgTaskRunning = false;
+        BLog.e('BiliPlayer startBackgroundRunning failed: ' + err.code + ', ' + err.message);
+      });
+  }
+
+  /** 释放长时任务（回前台 / 暂停 / 播放结束 / 页面销毁） */
+  private stopBackgroundTask(): void {
+    if (!this.mBgTaskRunning) {
+      return;
+    }
+    this.mBgTaskRunning = false;
+    let ctx = globalThis.appContext;
+    if (ctx == undefined) {
+      return;
+    }
+    backgroundTaskManager.stopBackgroundRunning(ctx)
+      .then(() => {
+        BLog.i('BiliPlayer background task stopped');
+      })
+      .catch((err: BusinessError) => {
+        BLog.e('BiliPlayer stopBackgroundRunning failed: ' + err.code);
+      });
+  }
+
+  /** 创建并激活 AVSession（媒体播控中心；仅创建一次，随页面销毁释放） */
+  private ensureAVSession(): void {
+    if (this.mAVSession != null) {
+      return;
+    }
+    let ctx = globalThis.appContext;
+    if (ctx == undefined) {
+      return;
+    }
+    avSession.createAVSession(ctx, 'ohbili_player', 'video')
+      .then((session: avSession.AVSession) => {
+        if (this.mDestroyed) {
+          session.destroy();
+          return;
+        }
+        this.mAVSession = session;
+        let metadata: avSession.AVMetadata = {
+          assetId: this.bvid + '_' + this.cid,
+          title: this.videoTitle != '' ? this.videoTitle : this.bvid
+        };
+        session.setAVMetadata(metadata).catch((err: BusinessError) => {
+          BLog.e('BiliPlayer setAVMetadata failed: ' + err.code);
+        });
+        session.on('play', () => {
+          if (!this.mDestroyed) {
+            this.player.play();
+          }
+        });
+        session.on('pause', () => {
+          if (!this.mDestroyed) {
+            this.player.pause();
+          }
+        });
+        session.on('stop', () => {
+          if (!this.mDestroyed) {
+            this.player.pause();
+          }
+        });
+        session.activate().catch((err: BusinessError) => {
+          BLog.e('BiliPlayer activate AVSession failed: ' + err.code);
+        });
+      })
+      .catch((err: BusinessError) => {
+        BLog.e('BiliPlayer createAVSession failed: ' + err.code);
+      });
+  }
+
+  /** 同步播放态到媒体播控中心 */
+  private updateAVPlaybackState(playing: boolean): void {
+    if (this.mAVSession == null) {
+      return;
+    }
+    let state: avSession.AVPlaybackState = {
+      state: playing ? avSession.PlaybackState.PLAYBACK_STATE_PLAY
+        : avSession.PlaybackState.PLAYBACK_STATE_PAUSE
+    };
+    this.mAVSession.setAVPlaybackState(state).catch((err: BusinessError) => {
+      BLog.e('BiliPlayer setAVPlaybackState failed: ' + err.code);
+    });
+  }
+
+  /** 销毁 AVSession（页面销毁） */
+  private destroyAVSession(): void {
+    if (this.mAVSession == null) {
+      return;
+    }
+    let session: avSession.AVSession = this.mAVSession;
+    this.mAVSession = null;
+    session.destroy().catch((err: BusinessError) => {
+      BLog.e('BiliPlayer destroy AVSession failed: ' + err.code);
+    });
   }
 
   onDanmakuPnUpdated(propName: string): void {
@@ -248,6 +434,7 @@ export struct PlayerView {
         this.mWinH = px2vp(dis.height);
       }
     }
+    this.updateCutoutPads();
     this.player.setPlayId(this.bvid);
     // 大会员状态（清晰度档位解锁）、默认弹幕开关、记忆倍速
     this.mIsVip = (AppStorage.get<number>('ohBiliVipStatus') ?? 0) === 1;
@@ -269,6 +456,7 @@ export struct PlayerView {
   private onWindowSizeChange(wPx: number, hPx: number): void {
     this.mWinW = px2vp(wPx);
     this.mWinH = px2vp(hPx);
+    this.updateCutoutPads();
     BLog.i('BiliPlayer onWindowSizeChange: ' + wPx + 'x' + hPx
       + ', fullScreen: ' + this.mIsFullScreen + ', pendingFsEnter: ' + this.mPendingFsEnter);
     if (wPx > hPx) {
@@ -276,6 +464,8 @@ export struct PlayerView {
       this.isPortrait = false;
       this.mPendingFsEnter = false;
       this.mIsFullScreen = true;
+      // 自动旋转进横屏同样隐藏系统栏（手动全屏路径已在 enterFullScreen 调过，幂等）
+      WindowManager.setFullScreen(false);
     } else {
       this.isPortrait = true;
       if (this.mPendingFsEnter) {
@@ -287,8 +477,20 @@ export struct PlayerView {
         this.mIsLocked = false;
         this.mIsFullScreen = false;
         WindowManager.setFullScreen(true);
+        // 防御：重新显示系统栏后重申沉浸式透明栏属性，
+        // 避免部分版本恢复显示时栏背景被重置、视频顶部出现黑条
+        WindowManager.setLayoutFullScreen(true, '#00000000', '#ffffff', '#00000000', '#182431');
       }
     }
+  }
+
+  /**
+   * 更新挖孔/刘海避让（vp）：窗口旋转后挖孔映射的避让边会变化，需重查；
+   * 横屏挖孔位于左右长边（取较大值），竖屏位于顶部
+   */
+  private updateCutoutPads(): void {
+    this.mCutoutSidePad = px2vp(WindowManager.getCutoutSideAvoidWidth());
+    this.mCutoutTopPad = px2vp(WindowManager.getCutoutTopAvoidHeight());
   }
 
   /**
@@ -438,6 +640,8 @@ export struct PlayerView {
         mIsVip: this.mIsVip,
         mSpeed: $mSpeed,
         mLoopPlay: $mLoopPlay,
+        cutoutSidePad: this.mCutoutSidePad,
+        cutoutTopPad: this.mCutoutTopPad,
         onRequestDanmakuInput: (): void => {
           this.openDanmakuInput();
         },
@@ -522,7 +726,7 @@ export struct PlayerView {
           .borderRadius(22)
           .backgroundColor('#66000000')
           .justifyContent(FlexAlign.Center)
-          .position({ x: 12, y: '50%' })
+          .position({ x: 12 + this.mCutoutSidePad, y: '50%' })
           .translate({ y: '-50%' })
           .onClick(() => {
             this.mIsLocked = false;
@@ -551,7 +755,7 @@ export struct PlayerView {
               .backgroundColor('#33ffffff')
               .borderRadius(18)
               .padding({ left: 14, right: 14 })
-              .defaultFocus(true)
+              .key('danmakuInputField')
               .onChange((value: string) => {
                 this.mDanmakuInputText = value;
               })
@@ -569,8 +773,12 @@ export struct PlayerView {
               })
           }
           .width('100%')
-          .padding({ left: 12, right: 12, bottom: 10 })
-          .backgroundColor('#66000000')
+          .padding({
+            left: 12 + this.mCutoutSidePad,
+            right: 12 + this.mCutoutSidePad,
+            bottom: 10
+          })
+          .backgroundColor('#ff222225')
         }
         .width('100%')
         .height('100%')
@@ -621,7 +829,7 @@ export struct PlayerView {
       if (this.mDestroyed || resp == null || resp.data == null) {
         return;
       }
-      this.updateQualityInfo(resp);
+      this.updateQualityInfo(resp.data);
       this.mPlayUrl = resp.data.durl[0].url.replace(/\\u0026/g, '&')
       BLog.i("requestPlayUrl Response Data url=" + this.mPlayUrl);
       this.initPlay(this.mPlayUrl);
@@ -656,13 +864,15 @@ export struct PlayerView {
       return '';
     }
     let body: PlayUrlResponse = resp.result;
-    if (body.code != 0 || body.data == null || body.data.durl == null
-      || body.data.durl.length === 0) {
+    // 番剧 playurl 响应数据嵌在 result 字段（普通视频为 data），做双字段兜底
+    let playData: PlayUrl = body.result != null ? body.result : body.data;
+    if (body.code != 0 || playData == null || playData.durl == null
+      || playData.durl.length === 0) {
       this.toastBangumiPlayError(body.code);
       return '';
     }
-    this.updateQualityInfo(body);
-    return body.data.durl[0].url.replace(/\\u0026/g, '&');
+    this.updateQualityInfo(playData);
+    return playData.durl[0].url.replace(/\\u0026/g, '&');
   }
 
   /** 番剧取流失败提示（业务码映射文案） */
@@ -719,15 +929,15 @@ export struct PlayerView {
       });
   }
 
-  /** 记录 playurl 响应中的清晰度档位表与当前档位（清晰度菜单数据源） */
-  private updateQualityInfo(resp: PlayUrlResponse): void {
-    if (resp == null || resp.data == null) {
+  /** 记录 playurl 数据中的清晰度档位表与当前档位（清晰度菜单数据源） */
+  private updateQualityInfo(playData: PlayUrl): void {
+    if (playData == null) {
       return;
     }
-    this.mCurrentQn = resp.data.quality ?? 0;
-    if (resp.data.accept_quality != null && resp.data.accept_quality.length > 0) {
-      this.mAcceptQuality = resp.data.accept_quality;
-      this.mAcceptDesc = resp.data.accept_description ?? [];
+    this.mCurrentQn = playData.quality ?? 0;
+    if (playData.accept_quality != null && playData.accept_quality.length > 0) {
+      this.mAcceptQuality = playData.accept_quality;
+      this.mAcceptDesc = playData.accept_description ?? [];
     }
   }
 
@@ -769,7 +979,7 @@ export struct PlayerView {
         this.getUIContext().getPromptAction().showToast({ message: '清晰度切换失败，请稍后重试' });
         return;
       }
-      this.updateQualityInfo(resp);
+      this.updateQualityInfo(resp.data);
       this.mPlayUrl = resp.data.durl[0].url.replace(/\\u0026/g, '&');
       BLog.i('BiliPlayer switchQuality qn=' + qn + ', resumeMs=' + curMs);
       // 记忆用户选择的清晰度档位（下次起播优先使用）
@@ -922,17 +1132,26 @@ export struct PlayerView {
         } else if (status == IPlayStatus.PLAY) {
           thisClass.hideLoadIng();
           thisClass.mDanmakuModel.resume();
+          thisClass.ensureAVSession();
+          thisClass.updateAVPlaybackState(true);
+          thisClass.startBackgroundTaskIfBackground();
         } else if (status == IPlayStatus.PAUSE) {
           thisClass.hideLoadIng();
           thisClass.mDanmakuModel.pause();
+          thisClass.updateAVPlaybackState(false);
+          thisClass.stopBackgroundTask();
         } else if (status == IPlayStatus.ERROR) {
           thisClass.hideLoadIng();
+          thisClass.updateAVPlaybackState(false);
+          thisClass.stopBackgroundTask();
           prompt.showToast({
             message: "亲，视频播放异常，系统开小差咯"
           });
         } else if (status == IPlayStatus.DONE) {
           thisClass.showRePlay();
           thisClass.slideEnable = false;
+          thisClass.updateAVPlaybackState(false);
+          thisClass.stopBackgroundTask();
         }
       }
     });
@@ -1033,6 +1252,17 @@ export struct PlayerView {
       return;
     }
     this.mDanmakuInputVisible = true;
+    // 输入条条件挂载后自动聚焦拉起输入法：defaultFocus 仅页面首次加载生效，
+    // 条件分支挂载的输入框需 FocusController.requestFocus 主动聚焦
+    setTimeout(() => {
+      if (!this.mDestroyed && this.mDanmakuInputVisible) {
+        try {
+          this.getUIContext().getFocusController().requestFocus('danmakuInputField');
+        } catch (err) {
+          BLog.e('BiliPlayer requestFocus danmaku input failed: ' + JSON.stringify(err));
+        }
+      }
+    }, 120);
   }
 
   private closeDanmakuInput(): void {
@@ -1178,10 +1408,19 @@ struct PlayerControlView {
   /** 弹幕设置变更（滑条即时生效回调，由 PlayerView 应用到弹幕上下文） */
   onDanmakuSettingsChanged: () => void = () => {
   };
+  /** 挖孔/刘海避让（vp）：全屏时顶栏/底栏避让挖孔（由 PlayerView 传入） */
+  cutoutSidePad: number = 0;
+  cutoutTopPad: number = 0;
   @State mShowSeekPreview: boolean = false;
   @State mSeekPreviewText: string = "";
   private mPanStartPos: number = 0;
   private mPanTargetPos: number = 0;
+  /** 竖向滑动调节目标：true=亮度（左半屏） false=播放器音量（右半屏） */
+  private mGestureIsBrightness: boolean = true;
+  /** 竖向滑动起始值（0.0-1.0） */
+  private mGestureStartValue: number = 1.0;
+  @State mGestureHintVisible: boolean = false;
+  @State mGestureHintText: string = '';
 
   build() {
     Column() {
@@ -1207,7 +1446,12 @@ struct PlayerControlView {
               this.mSheetMode = 'menu';
               this.mSheetVisible = true;
             })
-        }.padding(8)
+        }.padding({
+          left: 8 + this.cutoutSidePad,
+          right: 8 + this.cutoutSidePad,
+          top: this.mIsFullScreen ? 8 + this.cutoutTopPad : 8,
+          bottom: 8
+        })
         .width('100%')
         .linearGradient({
           colors: [["#aa000000", 0.0], ["#00000000", 1.0]]
@@ -1235,7 +1479,7 @@ struct PlayerControlView {
             step: 1,
             style: SliderStyle.OutSet
           })
-            .width(this.mIsFullScreen ? '70%' : '40%')
+            .layoutWeight(1)
             .margin({ left: 12 })
             .blockColor(Color.White)
             .trackColor(Color.Gray)
@@ -1255,7 +1499,7 @@ struct PlayerControlView {
                 this.danmakuPn = Math.floor(seekValue / DANMAKU_TIME) + 1;
               }
             })
-          Text(this.currentTime + "/" + this.totalTime)
+          Text(this.mIsFullScreen ? this.currentTime + "/" + this.totalTime : this.currentTime)
             .fontSize(12)
             .margin({ left: 8, right: 8 })
             .fontColor(Color.White)
@@ -1268,7 +1512,7 @@ struct PlayerControlView {
             .fontColor(Color.White)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .constraintSize({ maxWidth: 140 })
+            .constraintSize({ maxWidth: this.mIsFullScreen ? 140 : 80 })
             .height(28)
             .padding({ left: 12, right: 12 })
             .borderRadius(14)
@@ -1312,7 +1556,12 @@ struct PlayerControlView {
                 this.requestExitFullScreen();
               })
           }
-        }.padding({ left: 8, right: 8, top: 4, bottom: 4 })
+        }.padding({
+          left: 8 + this.cutoutSidePad,
+          right: 8 + this.cutoutSidePad,
+          top: 4,
+          bottom: 4
+        })
         .width('100%')
         .linearGradient({
           colors: [["#00000000", 0.0], ["#aa000000", 1.0]]
@@ -1328,11 +1577,18 @@ struct PlayerControlView {
           .position({ x: '50%', y: '50%' })
           .translate({ x: '-50%', y: '-50%' })
       }
+      if (this.mGestureHintVisible) {
+        Text(this.mGestureHintText)
+          .fontSize(14)
+          .fontColor(Color.White)
+          .padding({ left: 20, right: 20, top: 10, bottom: 10 })
+          .backgroundColor('#99000000')
+          .borderRadius(8)
+          .position({ x: '50%', y: '50%' })
+          .translate({ x: '-50%', y: '-50%' })
+      }
     }.width('100%')
     .height('100%')
-    .onClick(() => {
-      this.mIsShowCtl = !this.mIsShowCtl
-    })
     // 弹层锚定常驻根节点：避免 if(mIsShowCtl) 内的图标卸载导致弹层被连带关闭
     .bindSheet($$this.mSheetVisible, this.playerSettingsSheet(), {
       height: 400,
@@ -1342,10 +1598,16 @@ struct PlayerControlView {
         this.mSheetMode = 'menu';
       }
     })
+    // 手势互斥组：双击播/停、单击显隐控制栏、横向拖动快进快退、
+    // 竖向拖动调节亮度（左半屏）/播放器音量（右半屏）
     .gesture(GestureGroup(GestureMode.Exclusive,
       TapGesture({ count: 2 })
         .onAction(() => {
           this.togglePlayByTap();
+        }),
+      TapGesture({ count: 1 })
+        .onAction(() => {
+          this.mIsShowCtl = !this.mIsShowCtl;
         }),
       PanGesture({ fingers: 1, direction: PanDirection.Horizontal, distance: 8 })
         .onActionStart((event: GestureEvent) => {
@@ -1356,6 +1618,16 @@ struct PlayerControlView {
         })
         .onActionEnd((event: GestureEvent) => {
           this.onPanEnd(event);
+        }),
+      PanGesture({ fingers: 1, direction: PanDirection.Vertical, distance: 8 })
+        .onActionStart((event: GestureEvent) => {
+          this.onVPanStart(event);
+        })
+        .onActionUpdate((event: GestureEvent) => {
+          this.onVPanUpdate(event);
+        })
+        .onActionEnd((event: GestureEvent) => {
+          this.onVPanEnd(event);
         })
     ))
   }
@@ -1418,13 +1690,62 @@ struct PlayerControlView {
     }
   }
 
+  /** 竖向滑动起始：按触点横坐标判定调节目标（左半屏亮度 / 右半屏播放器音量） */
+  private onVPanStart(event: GestureEvent): void {
+    let winW: number = 0;
+    let win = WindowManager.getMainWindow();
+    if (win != null) {
+      try {
+        winW = px2vp(win.getWindowProperties().windowRect.width);
+      } catch (err) {
+        winW = 0;
+      }
+    }
+    let touchX: number = 0;
+    if (event.fingerList != null && event.fingerList.length > 0) {
+      // fingerList.globalX 已是 vp 单位，不可再做 px2vp 转换（双重换算会令触点恒落左半屏）
+      touchX = event.fingerList[0].globalX;
+    }
+    this.mGestureIsBrightness = winW <= 0 || touchX < winW / 2;
+    this.mGestureStartValue = this.mGestureIsBrightness
+      ? WindowManager.getWindowBrightness() : this.player.getVolume();
+    if (this.mGestureStartValue < 0) {
+      this.mGestureStartValue = 1.0;
+    }
+  }
+
+  /** 竖向滑动过程：上滑增大、下滑减小，滑动全程（约 350vp）对应 0-100% */
+  private onVPanUpdate(event: GestureEvent): void {
+    let target: number = this.mGestureStartValue - event.offsetY / GESTURE_VPAN_RANGE;
+    if (target < 0.0) {
+      target = 0.0;
+    }
+    if (target > 1.0) {
+      target = 1.0;
+    }
+    if (this.mGestureIsBrightness) {
+      WindowManager.setWindowBrightness(target);
+      this.mGestureHintText = '亮度 ' + Math.round(target * 100) + '%';
+    } else {
+      this.player.setVolume(target);
+      this.mGestureHintText = '音量 ' + Math.round(target * 100) + '%';
+    }
+    this.mGestureHintVisible = true;
+  }
+
+  /** 竖向滑动结束：隐藏屏上百分比提示 */
+  private onVPanEnd(event: GestureEvent): void {
+    this.mGestureHintVisible = false;
+  }
+
   /** 三点菜单弹层：主菜单 / 弹幕设置 / 清晰度选择 / 播放速度 */
   @Builder
   playerSettingsSheet() {
     Column() {
       Row() {
         if (this.mSheetMode !== 'menu') {
-          Image($r('app.media.ic_player_back_bold'))
+          // 白底弹层用深色返回箭头（ic_player_back_bold 为白色，白底不可见）
+          Image($r('app.media.ic_page_back'))
             .width(20)
             .height(20)
             .onClick(() => {

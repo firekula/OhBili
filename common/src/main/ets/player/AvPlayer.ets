@@ -286,6 +286,38 @@ export class AvPlayer extends IPlayer {
         }
     }
 
+    public setVolume(volume: number): void {
+        if (this.isReleased || !this.avPlayer) {
+            return;
+        }
+        let v: number = volume;
+        if (v < 0.0) {
+            v = 0.0;
+        } else if (v > 1.0) {
+            v = 1.0;
+        }
+        try {
+            this.avPlayer.setVolume(v);
+        } catch (error) {
+            console.warn(`AvPlayer setVolume failed: ${JSON.stringify(error)}`);
+        }
+    }
+
+    public getVolume(): number {
+        if (this.isReleased || !this.avPlayer) {
+            return 1.0;
+        }
+        try {
+            let v: number = this.avPlayer.volume;
+            if (v == null || isNaN(v) || v < 0.0) {
+                return 1.0;
+            }
+            return Math.min(v, 1.0);
+        } catch (error) {
+            return 1.0;
+        }
+    }
+
     public setPlayId(playId: string) {
         this.playId = playId;
     }

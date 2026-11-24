@@ -145,11 +145,18 @@ export class ApiManager {
    * 获取播放地址：qn 缺省/为 0 时走原有匿名 playurl（保持既有播放链路不变）；
    * 指定 qn 时走 platform=html5 扩展端点（携带登录 Cookie 解锁更高清晰度），
    * 返回含 accept_quality/accept_description 档位表与 durl.size（离线缓存选档用）。
+   * qn>64（1080P 及以上）先走 WBI 签名 mp4 线路（html5 线路封顶 720P），不可用则回退。
    */
   async requestPlayUrl(bvid: string, cid: number, qn?: number): Promise<PlayUrlResponse> {
     if (qn != null && qn > 0) {
       BLog.d(`requestPlayUrl bvid: ${bvid}, cid: ${cid}, qn: ${qn}`);
       let cookie: string = LoginHelper.buildCookieHeader();
+      if (qn > 64) {
+        let wbiResult: PlayUrlResponse | null = await this.requestPlayUrlWbiMp4(cookie, bvid, cid, qn);
+        if (wbiResult != null) {
+          return wbiResult;
+        }
+      }
       var qnResponse = await TaskManager.getInstance().requestPlayUrlWithQn(cookie, bvid, cid, qn);
       if (qnResponse.code == -1) {
         BLog.e("requestPlayUrl qn err=" + qnResponse.message);
@@ -168,6 +175,63 @@ export class ApiManager {
       BLog.d("requestPlayUrl result: " + JSON.stringify(response.result));
     }
     return response.result
+  }
+
+  /**
+   * [SPIKE 一次性验证代码] WBI 签名的 DASH 线路（x/player/wbi/playurl + fnval=4048）。
+   * 返回的 dash 流位于 result.data.dash；验证后随 spike 一并移除。
+   */
+  async requestPlayUrlWbiDash(bvid: string, cid: number, qn: number): Promise<ApiResponse<PlayUrlResponse>> {
+    let cookie: string = LoginHelper.buildCookieHeader();
+    let signed: Record<string, string> = await WbiSigner.signParams({
+      'bvid': bvid,
+      'cid': cid.toString(),
+      'qn': qn.toString(),
+      'fnval': '4048',
+      'fourk': '1'
+    });
+    return TaskManager.getInstance().requestPlayUrlWbiDash(cookie, bvid, cid, qn,
+      signed['w_rid'] ?? '', signed['wts'] ?? '');
+  }
+
+  /**
+   * WBI 签名的网页版 mp4 线路（x/player/wbi/playurl + fnval=1，1080P 取流用）。
+   * 返回 null 表示线路不可用或实际档位无增益，调用方应回退 html5 线路。
+   */
+  private async requestPlayUrlWbiMp4(cookie: string, bvid: string, cid: number,
+                                     qn: number): Promise<PlayUrlResponse | null> {
+    try {
+      let signed: Record<string, string> = await WbiSigner.signParams({
+        'bvid': bvid,
+        'cid': cid.toString(),
+        'qn': qn.toString(),
+        'fnval': '1',
+        'fourk': '1'
+      });
+      let wRid: string = signed['w_rid'] ?? '';
+      if (wRid === '') {
+        BLog.w("requestPlayUrlWbiMp4: no wbi signature, skip");
+        return null;
+      }
+      let resp: ApiResponse<PlayUrlResponse> = await TaskManager.getInstance()
+        .requestPlayUrlWbiMp4(cookie, bvid, cid, qn, wRid, signed['wts'] ?? '');
+      if (resp.code != 0 || resp.result == null || resp.result.data == null
+        || resp.result.data.durl == null || resp.result.data.durl.length === 0) {
+        BLog.w("requestPlayUrlWbiMp4 unavailable, code=" + resp.code + ", msg=" + resp.message);
+        return null;
+      }
+      let gotQn: number = resp.result.data.quality;
+      // 实际下发档位无增益（未登录/权限不足被压档）时回退 html5 线路
+      if (gotQn < 64) {
+        BLog.w("requestPlayUrlWbiMp4 low quality=" + gotQn + ", fallback to html5 line");
+        return null;
+      }
+      BLog.d("requestPlayUrlWbiMp4 ok, quality=" + gotQn);
+      return resp.result;
+    } catch (err) {
+      BLog.w("requestPlayUrlWbiMp4 err=" + err);
+      return null;
+    }
   }
 
   async requestReply(oid: string, next: number,
@@ -1242,46 +1306,75 @@ export class ApiManager {
   /**
    * 回复我的消息（需登录，游标分页）
    * @param id 游标 id（首页 0）
-   * @param replyTime 回复时间游标（首页空串）
-   */
+    * @param replyTime 回复时间游标（首页空串）
+    */
   async requestMsgFeedReply(id: number, replyTime: string):
     Promise<ApiResponse<MsgFeedReplyResponse>> {
     BLog.d("requestMsgFeedReply id=" + id);
     let cookie: string = LoginHelper.buildCookieHeader();
-    return await TaskManager.getInstance().requestMsgFeedReply(cookie, id, replyTime);
+    let signed: Record<string, string> = await WbiSigner.signParams({
+      'build': '0',
+      'mobi_app': 'web',
+      'platform': 'web',
+      'id': id.toString(),
+      'reply_time': replyTime
+    });
+    return await TaskManager.getInstance().requestMsgFeedReply(cookie, id, replyTime,
+      signed['w_rid'] ?? '', signed['wts'] ?? '');
   }
 
   /**
-   * @我的消息（需登录，游标分页）
-   * @param id 游标 id（首页 0）
-   * @param atTime @时间游标（首页空串）
-   */
+    * @我的消息（需登录，游标分页）
+    * @param id 游标 id（首页 0）
+    * @param atTime @时间游标（首页空串）
+    */
   async requestMsgFeedAt(id: number, atTime: string):
     Promise<ApiResponse<MsgFeedAtResponse>> {
     BLog.d("requestMsgFeedAt id=" + id);
     let cookie: string = LoginHelper.buildCookieHeader();
-    return await TaskManager.getInstance().requestMsgFeedAt(cookie, id, atTime);
+    let signed: Record<string, string> = await WbiSigner.signParams({
+      'build': '0',
+      'mobi_app': 'web',
+      'platform': 'web',
+      'id': id.toString(),
+      'at_time': atTime
+    });
+    return await TaskManager.getInstance().requestMsgFeedAt(cookie, id, atTime,
+      signed['w_rid'] ?? '', signed['wts'] ?? '');
   }
 
   /**
-   * 收到的赞消息（需登录，游标分页）
-   * @param id 游标 id（首页 0）
-   * @param likeTime 点赞时间游标（首页空串）
-   */
+    * 收到的赞消息（需登录，游标分页）
+    * @param id 游标 id（首页 0）
+    * @param likeTime 点赞时间游标（首页空串）
+    */
   async requestMsgFeedLike(id: number, likeTime: string):
     Promise<ApiResponse<MsgFeedLikeResponse>> {
     BLog.d("requestMsgFeedLike id=" + id);
     let cookie: string = LoginHelper.buildCookieHeader();
-    return await TaskManager.getInstance().requestMsgFeedLike(cookie, id, likeTime);
+    let signed: Record<string, string> = await WbiSigner.signParams({
+      'build': '0',
+      'mobi_app': 'web',
+      'platform': 'web',
+      'id': id.toString(),
+      'like_time': likeTime
+    });
+    return await TaskManager.getInstance().requestMsgFeedLike(cookie, id, likeTime,
+      signed['w_rid'] ?? '', signed['wts'] ?? '');
   }
 
   /**
-   * 消息未读数（需登录）：{ reply, at, like, sys }，无数据返回 null
-   */
+    * 消息未读数（需登录）：{ reply, at, like, sys }，无数据返回 null
+    */
   async requestMsgFeedUnread(): Promise<MsgFeedUnreadData | null> {
     BLog.d("requestMsgFeedUnread");
     let cookie: string = LoginHelper.buildCookieHeader();
-    let response = await TaskManager.getInstance().requestMsgFeedUnread(cookie);
+    let signed: Record<string, string> = await WbiSigner.signParams({
+      'build': '0',
+      'mobi_app': 'web'
+    });
+    let response = await TaskManager.getInstance().requestMsgFeedUnread(cookie,
+      signed['w_rid'] ?? '', signed['wts'] ?? '');
     if (response.code == -1) {
       BLog.e("requestMsgFeedUnread err=" + response.message);
       return null;

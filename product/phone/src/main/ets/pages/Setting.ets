@@ -50,7 +50,7 @@ struct Setting {
           this.BaseSettingComponent()
           this.DanmuSettingComponent()
           this.VideoSettingComponent()
-        }.width('100%').height('100%')
+        }.width('100%')
         .padding({ left: 15, right: 15 })
       }
       .edgeEffect(EdgeEffect.Spring)

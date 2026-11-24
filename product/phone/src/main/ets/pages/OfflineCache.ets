@@ -3,7 +3,7 @@
  * OhBili is licensed under Mulan PSL v2.
  * You can use this software according to the terms and conditions of the Mulan PSL v2.
  * You may obtain a copy of Mulan PSL v2 at:
- * http://license.coscl.org.cn/MulanPSL2
+ * http://license.coscl.org.cn/Mulan PSL2/
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
  * EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
  * MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
@@ -22,6 +22,8 @@ import { ApiManager, BaseVideo, CacheTask, CacheTaskStatus, DownloadManager,
  * - 行尾删除按钮（AlertDialog 二次确认，DownloadManager.remove）；
  * - FAILED 条目重试（重新请求 playurl 刷新直链后入队）；
  * - COMPLETED 条目点击跳 Video 本地播放（localPath）。
+ * 行组件独立为 CacheTaskRow（@ObjectLink）：下载进度原地更新时仅文本/进度条刷新，
+ * 封面不重载（原 ForEach key 含 receivedBytes，进度每跳整行重建导致封面闪烁）。
  */
 @Entry
 @Component
@@ -80,9 +82,21 @@ struct OfflineCache {
         List() {
           ForEach(this.tasks, (task: CacheTask) => {
             ListItem() {
-              this.TaskRow(task)
+              CacheTaskRow({
+                task: task,
+                retryingId: $retryingId,
+                onRetry: (item: CacheTask): void => {
+                  this.retryTask(item);
+                },
+                onRemove: (item: CacheTask): void => {
+                  this.confirmRemove(item);
+                },
+                onItemClicked: (item: CacheTask): void => {
+                  this.onItemClick(item);
+                }
+              })
             }
-          }, (task: CacheTask) => task.id + '_' + task.status + '_' + task.receivedBytes)
+          }, (task: CacheTask) => task.id)
         }
         .width('100%')
         .layoutWeight(1)
@@ -90,92 +104,6 @@ struct OfflineCache {
         .edgeEffect(EdgeEffect.None)
       }
     }.width('100%').height('100%').backgroundColor($r('app.color.page_bg'))
-  }
-
-  /**
-   * 缓存任务行：封面 + 标题/UP/清晰度 + 状态与进度 + 行尾操作
-   */
-  @Builder
-  private TaskRow(task: CacheTask) {
-    Row() {
-      Image(task.cover)
-        .width(120)
-        .height(74)
-        .borderRadius(6)
-        .objectFit(ImageFit.Cover)
-        .alt($r('app.media.ic_comment_avatar_default'))
-
-      Column() {
-        Text(task.title)
-          .fontSize(14)
-          .fontColor($r('app.color.text_primary'))
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .textAlign(TextAlign.Start)
-        Text(task.upName)
-          .fontSize(11)
-          .fontColor($r('app.color.text_secondary'))
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .margin({ top: 3 })
-        Text(task.qualityDesc)
-          .fontSize(11)
-          .fontColor($r('app.color.text_tertiary'))
-          .margin({ top: 2 })
-
-        if (task.status == CacheTaskStatus.WAITING || task.status == CacheTaskStatus.DOWNLOADING) {
-          Progress({ value: this.progressPercent(task), total: 100, type: ProgressType.Linear })
-            .width('100%')
-            .height(4)
-            .margin({ top: 6 })
-            .color('#fb7299')
-          Text(this.statusText(task))
-            .fontSize(10)
-            .fontColor($r('app.color.text_tertiary'))
-            .margin({ top: 3 })
-        } else if (task.status == CacheTaskStatus.FAILED) {
-          Text(this.retryingId == task.id ? '重试中...' : '下载失败')
-            .fontSize(10)
-            .fontColor('#e25d5d')
-            .margin({ top: 6 })
-        } else {
-          Text('已缓存 ' + this.formatBytes(task.totalBytes))
-            .fontSize(10)
-            .fontColor($r('app.color.text_tertiary'))
-            .margin({ top: 6 })
-        }
-      }
-      .layoutWeight(1)
-      .height(74)
-      .alignItems(HorizontalAlign.Start)
-      .margin({ left: 10, right: 8 })
-
-      if (task.status == CacheTaskStatus.FAILED) {
-        Text("重试")
-          .fontSize(12)
-          .fontColor('#fb7299')
-          .padding({ left: 8, right: 4, top: 8, bottom: 8 })
-          .enabled(this.retryingId == '')
-          .onClick(() => {
-            this.retryTask(task);
-          })
-      }
-      Text("删除")
-        .fontSize(12)
-        .fontColor($r('app.color.text_tertiary'))
-        .padding({ left: 4, right: 4, top: 8, bottom: 8 })
-        .onClick(() => {
-          this.confirmRemove(task);
-        })
-    }
-    .width('100%')
-    .padding(10)
-    .borderRadius(8)
-    .backgroundColor($r('app.color.surface'))
-    .alignItems(VerticalAlign.Center)
-    .onClick(() => {
-      this.onItemClick(task);
-    })
   }
 
   /**
@@ -246,45 +174,150 @@ struct OfflineCache {
     });
   }
 
-  private progressPercent(task: CacheTask): number {
-    if (task.totalBytes <= 0) {
+  /**
+   * 字节数格式化（B/KB/MB/GB）
+   */
+  private formatBytes(bytes: number): string {
+    return formatBytesText(bytes);
+  }
+
+  private showToast(message: string): void {
+    this.getUIContext().getPromptAction().showToast({ message: message });
+  }
+}
+
+/**
+ * 字节数格式化（B/KB/MB/GB）：页级统计与行组件共用
+ */
+function formatBytesText(bytes: number): string {
+  if (bytes < 0) {
+    bytes = 0;
+  }
+  if (bytes < 1024) {
+    return bytes + 'B';
+  }
+  if (bytes < 1024 * 1024) {
+    return (bytes / 1024).toFixed(1) + 'KB';
+  }
+  if (bytes < 1024 * 1024 * 1024) {
+    return (bytes / 1024 / 1024).toFixed(1) + 'MB';
+  }
+  return (bytes / 1024 / 1024 / 1024).toFixed(2) + 'GB';
+}
+
+/**
+ * 缓存任务行（@ObjectLink 观察 CacheTask 原地变更）：
+ * 进度/状态更新仅刷新对应文本与进度条，封面 Image 不重建不重载
+ */
+@Component
+struct CacheTaskRow {
+  @ObjectLink task: CacheTask;
+  @Link retryingId: string;
+  onRetry: (task: CacheTask) => void = (task: CacheTask) => {
+  };
+  onRemove: (task: CacheTask) => void = (task: CacheTask) => {
+  };
+  onItemClicked: (task: CacheTask) => void = (task: CacheTask) => {
+  };
+
+  build() {
+    Row() {
+      Image(this.task.cover)
+        .width(120)
+        .height(74)
+        .borderRadius(6)
+        .objectFit(ImageFit.Cover)
+        .backgroundColor($r('app.color.border'))
+
+      Column() {
+        Text(this.task.title)
+          .fontSize(14)
+          .fontColor($r('app.color.text_primary'))
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .textAlign(TextAlign.Start)
+        Text(this.task.upName)
+          .fontSize(11)
+          .fontColor($r('app.color.text_secondary'))
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .margin({ top: 3 })
+        Text(this.task.qualityDesc)
+          .fontSize(11)
+          .fontColor($r('app.color.text_tertiary'))
+          .margin({ top: 2 })
+
+        if (this.task.status == CacheTaskStatus.WAITING || this.task.status == CacheTaskStatus.DOWNLOADING) {
+          Progress({ value: this.progressPercent(), total: 100, type: ProgressType.Linear })
+            .width('100%')
+            .height(4)
+            .margin({ top: 6 })
+            .color('#fb7299')
+          Text(this.statusText())
+            .fontSize(10)
+            .fontColor($r('app.color.text_tertiary'))
+            .margin({ top: 3 })
+        } else if (this.task.status == CacheTaskStatus.FAILED) {
+          Text(this.retryingId == this.task.id ? '重试中...' : '下载失败')
+            .fontSize(10)
+            .fontColor('#e25d5d')
+            .margin({ top: 6 })
+        } else {
+          Text('已缓存 ' + formatBytesText(this.task.totalBytes))
+            .fontSize(10)
+            .fontColor($r('app.color.text_tertiary'))
+            .margin({ top: 6 })
+        }
+      }
+      .layoutWeight(1)
+      .height(74)
+      .alignItems(HorizontalAlign.Start)
+      .margin({ left: 10, right: 8 })
+
+      if (this.task.status == CacheTaskStatus.FAILED) {
+        Text("重试")
+          .fontSize(12)
+          .fontColor('#fb7299')
+          .padding({ left: 8, right: 4, top: 8, bottom: 8 })
+          .enabled(this.retryingId == '')
+          .onClick(() => {
+            this.onRetry(this.task);
+          })
+      }
+      Text("删除")
+        .fontSize(12)
+        .fontColor($r('app.color.text_tertiary'))
+        .padding({ left: 4, right: 4, top: 8, bottom: 8 })
+        .onClick(() => {
+          this.onRemove(this.task);
+        })
+    }
+    .width('100%')
+    .padding(10)
+    .borderRadius(8)
+    .backgroundColor($r('app.color.surface'))
+    .alignItems(VerticalAlign.Center)
+    .onClick(() => {
+      this.onItemClicked(this.task);
+    })
+  }
+
+  private progressPercent(): number {
+    if (this.task.totalBytes <= 0) {
       return 0;
     }
-    let percent: number = Math.floor(task.receivedBytes * 100 / task.totalBytes);
+    let percent: number = Math.floor(this.task.receivedBytes * 100 / this.task.totalBytes);
     if (percent > 100) {
       percent = 100;
     }
     return percent;
   }
 
-  private statusText(task: CacheTask): string {
-    if (task.status == CacheTaskStatus.DOWNLOADING) {
-      return this.progressPercent(task) + '% · ' + this.formatBytes(task.receivedBytes)
-        + '/' + this.formatBytes(task.totalBytes);
+  private statusText(): string {
+    if (this.task.status == CacheTaskStatus.DOWNLOADING) {
+      return this.progressPercent() + '% · ' + formatBytesText(this.task.receivedBytes)
+        + '/' + formatBytesText(this.task.totalBytes);
     }
     return '排队等待中';
-  }
-
-  /**
-   * 字节数格式化（B/KB/MB/GB）
-   */
-  private formatBytes(bytes: number): string {
-    if (bytes < 0) {
-      bytes = 0;
-    }
-    if (bytes < 1024) {
-      return bytes + 'B';
-    }
-    if (bytes < 1024 * 1024) {
-      return (bytes / 1024).toFixed(1) + 'KB';
-    }
-    if (bytes < 1024 * 1024 * 1024) {
-      return (bytes / 1024 / 1024).toFixed(1) + 'MB';
-    }
-    return (bytes / 1024 / 1024 / 1024).toFixed(2) + 'GB';
-  }
-
-  private showToast(message: string): void {
-    this.getUIContext().getPromptAction().showToast({ message: message });
   }
 }

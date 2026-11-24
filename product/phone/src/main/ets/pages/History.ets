@@ -112,7 +112,7 @@ struct History {
               ListItem() {
                 this.HistoryRow(item, index)
               }
-            }, (item: HistoryItem, index: number) => index + '_' + (item.view_at ?? 0))
+            }, (item: HistoryItem, index: number) => (item.view_at ?? 0) + '_' + (item.bvid ?? ''))
             if (!this.hasMore) {
               ListItem() {
                 Text("没有更多了")
@@ -188,7 +188,7 @@ struct History {
           .height(84)
           .borderRadius(6)
           .objectFit(ImageFit.Cover)
-          .alt($r('app.media.ic_comment_avatar_default'))
+          .backgroundColor($r('app.color.border'))
         if (!isPlayableHistoryItem(item)) {
           // 非视频类型角标（番剧/影视/直播回放等）
           Text(this.itemBadge(item))

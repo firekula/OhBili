@@ -26,7 +26,9 @@ export enum CacheTaskStatus {
  * 离线缓存任务本地模型（DownloadManager 持久化到 filesDir/offline/index.json）。
  * id 为 bvid_cid_qn 唯一标识；localDir/fileName 为相对 filesDir 的存储位置；
  * 下载 URL 为临时签名链接，不持久化，重试时由调用方重新获取。
+ * @Observed：下载进度原地更新时配合 @ObjectLink 行组件细粒度刷新（封面不重载）
  */
+@Observed
 export class CacheTask {
   public id: string = '';
   public bvid: string = '';
