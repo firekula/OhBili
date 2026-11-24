@@ -103,7 +103,7 @@ product/phone/src/main/
 - **BiliDash**: `duration: number`（ms）、`video: BiliDashStream[]`、`audio: BiliDashAudioStream[]`、`dolby?: BiliDashDolby`、`flac?: BiliDashAudioStream | null`
 - **BiliDashStream**: `id: number`（=qn）、`baseUrl: string`、`backupUrl: string[]`、`codecs: string`、`bandwidth: number`、`mimeType: string`、`width: number`、`height: number`、`SegmentBase: BiliSegmentBase`
 - **BiliDashAudioStream**: `id: number`、`baseUrl: string`、`backupUrl: string[]`、`codecs: string`、`bandwidth: number`、`mimeType: string`、`SegmentBase: BiliSegmentBase`
-- **BiliSegmentBase**: `initialization: string`（如 `0-963`）、`indexRange: string`（如 `964-1421`）
+- **BiliSegmentBase**: `Initialization: string`（如 `0-963`；真实 API 字段为大写 I，retrofit 解析大小写敏感）、`indexRange: string`（如 `964-1421`）
 - **BiliDashDolby**: `type: number`、`audio: BiliDashAudioStream[]`（本期不消费，仅建模）
 - **PlayUrl**: 增补 `dash?: BiliDash | null`（与现有 durl/quality/accept_quality 共存）
 
