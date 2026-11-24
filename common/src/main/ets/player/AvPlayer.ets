@@ -41,6 +41,8 @@ export class AvPlayer extends IPlayer {
     /** 待切换的数据源（reset→idle 回调后应用） */
     private pendingSourceUrl: string = "";
     private pendingSourceHeaders: Map<string, string> | null = null;
+    /** 待切换数据源的 ABR 起播档位提示（setDataSource 状态守卫挂起时随 pending 透传） */
+    private pendingSourceStrategy: media.PlaybackStrategy | null = null;
 
     public initPlay(context: object): Promise<void> {
         this.xController.setXComponentSurfaceSize({surfaceWidth:1920,surfaceHeight:1080});
@@ -76,6 +78,23 @@ export class AvPlayer extends IPlayer {
 
     public setDataSource(url: string, headers?:Map<string,string>, strategy?: media.PlaybackStrategy) {
         if (this.isReleased || !this.avPlayer) {
+            return;
+        }
+        let state: string = this.avPlayer.state;
+        if (state === 'released') {
+            // 实例已释放（idle 分支自动 release 过），不可恢复
+            console.warn('AvPlayer setDataSource skipped, player already released');
+            return;
+        }
+        if (state !== 'idle') {
+            // 非法状态直设源会 5400102（同步 throw 可致 unhandled rejection 白屏；异步 error 会释放实例）：
+            // 复用 switchSource 的 reset 交换机制——挂起 pending，reset 回 idle 后由 stateChange 回调重设
+            this.pendingSourceUrl = url;
+            this.pendingSourceHeaders = headers ?? null;
+            this.pendingSourceStrategy = strategy ?? null;
+            this.isSwitchingSource = true;
+            this.stopProgressTask();
+            this.avPlayer.reset();
             return;
         }
         this.isSeek = false;
@@ -124,13 +143,18 @@ export class AvPlayer extends IPlayer {
                 }
             });
             let mediaSource: media.MediaSource = media.createMediaSourceWithUrl(url, headerRecord);
-            if (strategy !== undefined && strategy !== null) {
-                this.avPlayer.setMediaSource(mediaSource, strategy).catch((error: BusinessError) => {
-                    console.error(`setMediaSource with strategy failed, code is ${error.code}, message is ${error.message}`);
-                    this.avPlayer.url = url;
-                });
-            } else {
-                this.avPlayer.setMediaSource(mediaSource).catch((error: BusinessError) => {
+            // 部分 ROM 单参 setMediaSource() 返回 undefined（非 Promise）甚至同步 throw，
+            // 直接 .catch 会抛 TypeError（BUG A），两条路径都要防御
+            let result: Promise<void> | undefined = undefined;
+            try {
+                result = strategy !== undefined && strategy !== null
+                    ? this.avPlayer.setMediaSource(mediaSource, strategy)
+                    : this.avPlayer.setMediaSource(mediaSource);
+            } catch (err) {
+                console.error(`AvPlayer setMediaSource threw sync: ${err}`);
+            }
+            if (result !== undefined && result !== null) {
+                result.catch((error: BusinessError) => {
                     console.error(`setMediaSource failed, code is ${error.code}, message is ${error.message}`);
                     this.avPlayer.url = url;
                 });
@@ -365,9 +389,11 @@ export class AvPlayer extends IPlayer {
                         // 清晰度切换：复用实例重设数据源，不销毁
                         this.isSwitchingSource = false;
                         this.isSeek = false;
-                        this.applySource(this.pendingSourceUrl, this.pendingSourceHeaders ?? undefined);
+                        this.applySource(this.pendingSourceUrl, this.pendingSourceHeaders ?? undefined,
+                            this.pendingSourceStrategy ?? undefined);
                         this.pendingSourceUrl = '';
                         this.pendingSourceHeaders = null;
+                        this.pendingSourceStrategy = null;
                         break;
                     }
                     this.avPlayer.release(); // 调用release接口销毁实例对象
