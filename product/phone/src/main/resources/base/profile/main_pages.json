@@ -19,7 +19,6 @@
     "pages/WatchLater",
     "pages/OfflineCache",
     "pages/Bangumi",
-    "pages/Message",
-    "pages/DashSpike"
+    "pages/Message"
   ]
 }

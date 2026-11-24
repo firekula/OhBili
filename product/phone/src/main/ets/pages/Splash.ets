@@ -41,8 +41,7 @@ struct Splash {
 
     this.initTask();
     setTimeout(() => {
-      // [SPIKE 一次性验证代码] 临时直跳 DASH 验证页，验证后还原为 pages/Index
-      router.replaceUrl({ url: "pages/DashSpike" });
+      router.replaceUrl({ url: "pages/Index" });
     }, 1000);
   }
 
