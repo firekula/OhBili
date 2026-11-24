@@ -857,6 +857,10 @@ export struct PlayerView {
       let qnReq: number = preferredQn > 0 ? preferredQn : 120;
       let resp: PlayUrlResponse | null =
         await ApiManager.getInstance().requestPlayUrlWbiDash(bvid, cid, qnReq);
+      if (this.mDestroyed) {
+        // 页面在请求挂起期间销毁：releasePlayer 已 stop 代理，不再继续 DASH 链路
+        return false;
+      }
       if (resp == null || resp.data == null || resp.data.dash == null
         || resp.data.dash.video == null || resp.data.dash.video.length === 0) {
         return false;
@@ -865,6 +869,13 @@ export struct PlayerView {
       this.updateQualityInfo(resp.data);
       let port: number = await this.mDashServer.start();
       if (port < 0) {
+        return false;
+      }
+      if (this.mDestroyed) {
+        // 销毁竞态：releasePlayer 的 stop() 可能先于 start() 执行，start() 续行已重绑
+        // listener 且 .then 的 mDestroyed 早退保证无人再 stop 它——这里补 stop() 回收，
+        // 防止 34567..34576 端口池被泄漏监听耗尽后 DASH 永久退化为 durl
+        this.mDashServer.stop();
         return false;
       }
       let mpdOpts: DashMpdOptions = {
