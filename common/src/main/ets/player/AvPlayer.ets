@@ -105,6 +105,9 @@ export class AvPlayer extends IPlayer {
 
     /** 实际设置数据源（本地 fdSrc / 带头 MediaSource / 直连 url）；strategy 存在时作为 ABR 起播档位提示传入 */
     private applySource(url: string, headers?: Map<string, string>, strategy?: media.PlaybackStrategy): void {
+        console.info('AvPlayer applySource state=' + (this.avPlayer != null ? this.avPlayer.state : 'n/a')
+            + ' hasStrategy=' + (strategy !== undefined && strategy !== null)
+            + ' url=' + url.substring(0, 90));
         if (url.startsWith('/')) {
             // 本地文件：fs.open 取 fd 走 fdSrc 播放（AVPlayer.url 不支持沙箱绝对路径）
             this.openLocalFile(url);

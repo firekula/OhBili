@@ -907,7 +907,7 @@ export struct PlayerView {
       }
       return true;
     } catch (err) {
-      BLog.e('BiliPlayer tryDashPlay exception: ' + JSON.stringify(err));
+      BLog.e('BiliPlayer tryDashPlay exception: ' + err + ' | json=' + JSON.stringify(err));
       return false;
     }
   }
