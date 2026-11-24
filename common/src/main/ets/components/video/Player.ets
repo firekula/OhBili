@@ -1063,7 +1063,10 @@ export struct PlayerView {
           BLog.i('BiliPlayer switchQuality qn=' + qn + ', resumeMs=' + curMs);
           // 记忆用户选择的清晰度档位（下次起播优先使用）
           AppStorage.setOrCreate('ohBiliPlayQn', qn);
-          this.toastQualityFallback(this.mCurrentQn, qn);
+          if (qn > 0) {
+            // 仅锁定档提示服务端档位回退；自动档用户未指定档位不弹
+            this.toastQualityFallback(this.mCurrentQn, qn);
+          }
           this.switchSourceResume(curMs);
         });
       return;
@@ -1140,7 +1143,10 @@ export struct PlayerView {
       BLog.i('BiliPlayer switchQuality qn=' + qn + ', resumeMs=' + curMs);
       // 记忆用户选择的清晰度档位（下次起播优先使用）
       AppStorage.setOrCreate('ohBiliPlayQn', qn);
-      this.toastQualityFallback(this.mCurrentQn, qn);
+      if (qn > 0) {
+        // 仅锁定档提示服务端档位回退；自动档用户未指定档位不弹
+        this.toastQualityFallback(this.mCurrentQn, qn);
+      }
       this.switchSourceResume(curMs);
     });
   }
