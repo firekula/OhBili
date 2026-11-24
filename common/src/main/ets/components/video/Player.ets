@@ -21,6 +21,9 @@ import { IPlayer } from '../../player/IPlayer';
 import { AvPlayer } from '../../player/AvPlayer';
 import { IjkPlayer } from '../../player/IjkPlayer';
 import { IPlayStatus } from '../../player/IPlayStatus';
+import { LocalDashServer } from '../../player/LocalDashServer';
+import { DashMpdBuilder, DashMpdOptions } from '../../player/DashMpdBuilder';
+import { media } from '@kit.MediaKit';
 
 import {
   DanmakuView,
@@ -154,6 +157,12 @@ export struct PlayerView {
   private mBgTaskRunning: boolean = false;
   /** onPageHide 延迟判定定时器 id（区分页内跳转/应用退后台） */
   private mHideCheckTimer: number = -1;
+  /** 本地 DASH 代理服务（MPD 分发 + CDN 段代理；随组件存活，releasePlayer 停止） */
+  private mDashServer: LocalDashServer = new LocalDashServer();
+  /** DASH 管线已接管当前播放 */
+  private mDashActive: boolean = false;
+  /** DASH 尝试失败已回退 durl（防循环回退标记） */
+  private mDashFallbackUsed: boolean = false;
 
   private createParser(source: ProtoSource): BaseDanmakuParser {
     let parser: BaseDanmakuParser = new DanmakuParser();
@@ -262,6 +271,7 @@ export struct PlayerView {
     }
     this.player.setAutoPlay(false);
     this.player.release();
+    this.mDashServer.stop();
     this.stopBackgroundTask();
     this.destroyAVSession();
     if (this.mIsFullScreen) {
@@ -822,8 +832,71 @@ export struct PlayerView {
       this.getBangumiPlayUrl();
       return;
     }
-    // 记忆的清晰度档位（播放器菜单选择过）：走 qn 扩展端点；否则保持原默认链路
+    // 记忆的清晰度档位（播放器菜单选择过）：≤0 视为自动档；先尝试 DASH 管线，失败回退 durl
     let preferredQn: number = AppStorage.get<number>('ohBiliPlayQn') ?? 0;
+    this.tryDashPlay(bvid, cid, preferredQn).then((ok: boolean) => {
+      if (this.mDestroyed) {
+        return;
+      }
+      if (!ok) {
+        this.mDashActive = false;
+        this.mDashFallbackUsed = true;
+        BLog.i('BiliPlayer DASH fallback to durl, bvid=' + bvid);
+        this.fetchDurlPlay(bvid, cid, preferredQn);
+      }
+    });
+  }
+
+  /**
+   * DASH 前置尝试（普通视频链路）：wbi dash 取流 → 起本地代理 → 生成 MPD →
+   * 以本地 MPD 起播；任一步失败返回 false，由调用方回退 durl 链路。
+   */
+  private async tryDashPlay(bvid: string, cid: number, preferredQn: number): Promise<boolean> {
+    try {
+      // 自动档请求 qn=120 拉全量清晰度（供 ABR 升档）；锁定档请求记忆档位（MPD 收敛单档）
+      let qnReq: number = preferredQn > 0 ? preferredQn : 120;
+      let resp: PlayUrlResponse | null =
+        await ApiManager.getInstance().requestPlayUrlWbiDash(bvid, cid, qnReq);
+      if (resp == null || resp.data == null || resp.data.dash == null
+        || resp.data.dash.video == null || resp.data.dash.video.length === 0) {
+        return false;
+      }
+      // 清晰度菜单数据源同步自 dash 响应（accept_quality/accept_description）
+      this.updateQualityInfo(resp.data);
+      let port: number = await this.mDashServer.start();
+      if (port < 0) {
+        return false;
+      }
+      let mpdOpts: DashMpdOptions = {
+        proxyBase: 'http://127.0.0.1:' + port,
+        codecPreference: AppStorage.get<string>('ohBiliCodecPreference') ?? 'avc1',
+        pinQn: preferredQn > 0 ? preferredQn : -1
+      };
+      let mpd: string = DashMpdBuilder.build(resp.data.dash, mpdOpts);
+      if (mpd == '') {
+        return false;
+      }
+      this.mDashServer.updateMpd(mpd);
+      this.mDashActive = true;
+      this.mPlayUrl = 'http://127.0.0.1:' + port + '/dash.mpd';
+      BLog.i('BiliPlayer DASH play url=' + this.mPlayUrl + ', qnReq=' + qnReq);
+      if (preferredQn <= 0) {
+        // 自动档：给 ABR 起播档位提示（720P 起步，带宽充足时自适应升档）
+        let strategy: media.PlaybackStrategy = { preferredWidth: 1280, preferredHeight: 720 };
+        this.initPlay(this.mPlayUrl, strategy);
+      } else {
+        // 锁定档：MPD 已 pin 单档，无需 strategy
+        this.initPlay(this.mPlayUrl);
+      }
+      return true;
+    } catch (err) {
+      BLog.e('BiliPlayer tryDashPlay exception: ' + JSON.stringify(err));
+      return false;
+    }
+  }
+
+  /** durl 链路取流（DASH 不可用时的回退 / 原默认链路） */
+  private fetchDurlPlay(bvid: string, cid: number, preferredQn: number) {
     ApiManager.getInstance().requestPlayUrl(bvid, cid, preferredQn > 0 ? preferredQn : undefined)
       .then((resp: PlayUrlResponse) => {
       if (this.mDestroyed || resp == null || resp.data == null) {
@@ -1077,7 +1150,7 @@ export struct PlayerView {
     this.replayVisible = true;
   }
 
-  private initPlay(url: string) {
+  private initPlay(url: string, strategy?: media.PlaybackStrategy) {
     let thisClass = this;
     this.player.setOnTimeUpdateCallback({
       onTimeUpdate(current: number, total: number) {
@@ -1156,16 +1229,16 @@ export struct PlayerView {
       }
     });
     this.showLoadIng();
-    this.setDataSource(url);
+    this.setDataSource(url, strategy);
   }
 
-  private setDataSource(url: string) {
+  private setDataSource(url: string, strategy?: media.PlaybackStrategy) {
     let headers = new Map([
       ["User-Agent", ApiConstants.userAgent],
       ["Connection", "keep-alive"],
       ["Referer", ApiConstants.biliBase]
     ]);
-    this.player.setDataSource(url, headers);
+    this.player.setDataSource(url, headers, strategy);
   }
 
   private initDanmaku(source: ProtoSource) {

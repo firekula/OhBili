@@ -12,6 +12,7 @@
 
 import { OnTimeUpdateCallback, OnTimeStrUpdateCallback,
     OnStateChangeCallback, OnSizeChangeCallback } from './IPlayerCallback';
+import { media } from '@kit.MediaKit';
 
 export abstract class IPlayer {
     protected mOnTimeUpdateCallback: OnTimeUpdateCallback;
@@ -43,7 +44,7 @@ export abstract class IPlayer {
 
     abstract id(): string
 
-    abstract setDataSource(url: string, headers?:Map<string,string>): void
+    abstract setDataSource(url: string, headers?:Map<string,string>, strategy?: media.PlaybackStrategy): void
 
     abstract play(): void
 

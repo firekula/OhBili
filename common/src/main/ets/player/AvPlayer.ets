@@ -74,12 +74,12 @@ export class AvPlayer extends IPlayer {
         return this.myId;
     }
 
-    public setDataSource(url: string, headers?:Map<string,string>) {
+    public setDataSource(url: string, headers?:Map<string,string>, strategy?: media.PlaybackStrategy) {
         if (this.isReleased || !this.avPlayer) {
             return;
         }
         this.isSeek = false;
-        this.applySource(url, headers);
+        this.applySource(url, headers, strategy);
     }
 
     /**
@@ -103,8 +103,8 @@ export class AvPlayer extends IPlayer {
         this.avPlayer.reset();
     }
 
-    /** 实际设置数据源（本地 fdSrc / 带头 MediaSource / 直连 url） */
-    private applySource(url: string, headers?: Map<string, string>): void {
+    /** 实际设置数据源（本地 fdSrc / 带头 MediaSource / 直连 url）；strategy 存在时作为 ABR 起播档位提示传入 */
+    private applySource(url: string, headers?: Map<string, string>, strategy?: media.PlaybackStrategy): void {
         if (url.startsWith('/')) {
             // 本地文件：fs.open 取 fd 走 fdSrc 播放（AVPlayer.url 不支持沙箱绝对路径）
             this.openLocalFile(url);
@@ -121,10 +121,17 @@ export class AvPlayer extends IPlayer {
                 }
             });
             let mediaSource: media.MediaSource = media.createMediaSourceWithUrl(url, headerRecord);
-            this.avPlayer.setMediaSource(mediaSource).catch((error: BusinessError) => {
-                console.error(`setMediaSource failed, code is ${error.code}, message is ${error.message}`);
-                this.avPlayer.url = url;
-            });
+            if (strategy !== undefined && strategy !== null) {
+                this.avPlayer.setMediaSource(mediaSource, strategy).catch((error: BusinessError) => {
+                    console.error(`setMediaSource with strategy failed, code is ${error.code}, message is ${error.message}`);
+                    this.avPlayer.url = url;
+                });
+            } else {
+                this.avPlayer.setMediaSource(mediaSource).catch((error: BusinessError) => {
+                    console.error(`setMediaSource failed, code is ${error.code}, message is ${error.message}`);
+                    this.avPlayer.url = url;
+                });
+            }
         } else {
             this.avPlayer.url = url;
         }
