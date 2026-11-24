@@ -257,6 +257,10 @@ export class LocalDashServer {
             }
         }
         let hostPart: string = rest.substring(0, endIdx);
+        let authorityLower: string = hostPart.toLowerCase();
+        if (!/^[a-z0-9.-]+(:[0-9]+)?$/.test(authorityLower)) {
+            return '';
+        }
         let atIdx: number = hostPart.lastIndexOf('@');
         if (atIdx >= 0) {
             hostPart = hostPart.substring(atIdx + 1);
