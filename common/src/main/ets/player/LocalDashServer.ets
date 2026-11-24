@@ -27,6 +27,8 @@ export class LocalDashServer {
     private server: socket.TCPSocketServer | null = null;
     private boundPort: number = -1;
     private mpdContent: string = '';
+    /** 动态 host 白名单：当前 playurl 响应实际用作代理源的 baseUrl host（updateMpd 前由上层注入） */
+    private allowedHosts: Set<string> = new Set<string>();
     private stopped: boolean = false;
     private connections: Set<socket.TCPSocketConnection> = new Set<socket.TCPSocketConnection>();
 
@@ -60,6 +62,7 @@ export class LocalDashServer {
     stop(): void {
         this.stopped = true;
         this.mpdContent = '';
+        this.allowedHosts.clear();
         let clients: socket.TCPSocketConnection[] = [];
         this.connections.forEach((client: socket.TCPSocketConnection) => {
             clients.push(client);
@@ -79,6 +82,22 @@ export class LocalDashServer {
 
     updateMpd(mpd: string): void {
         this.mpdContent = mpd;
+    }
+
+    /**
+     * 以当前 playurl 响应实际返回的源 URL 建立动态 host 白名单。
+     * B站合作 CDN 存在别名域（如 *.edge.mountaintoys.cn），静态后缀列表覆盖不全；
+     * 代理的 URL 均来自同一份可信 playurl 响应，故以响应实际 host 放行。
+     */
+    updateAllowedHosts(sourceUrls: string[]): void {
+        this.allowedHosts.clear();
+        for (let i: number = 0; i < sourceUrls.length; i++) {
+            let host: string = LocalDashServer.extractHost(sourceUrls[i]);
+            if (host.length === 0) {
+                continue;
+            }
+            this.allowedHosts.add(host);
+        }
     }
 
     private registerConnectHandler(server: socket.TCPSocketServer): void {
@@ -153,7 +172,7 @@ export class LocalDashServer {
             return;
         }
         let host: string = LocalDashServer.extractHost(target);
-        if (!LocalDashServer.isHostAllowed(host)) {
+        if (!this.isHostAllowed(host)) {
             BLog.w('LocalDashServer: blocked non-whitelisted host=' + host);
             this.sendSimpleResponse(client, 403, 'Forbidden');
             return;
@@ -272,13 +291,18 @@ export class LocalDashServer {
         return hostPart.toLowerCase();
     }
 
-    private static isHostAllowed(host: string): boolean {
+    private isHostAllowed(host: string): boolean {
         if (host.length === 0) {
             return false;
         }
         if (!/^[a-z0-9.-]+$/.test(host)) {
             return false;
         }
+        // 动态白名单：当前 playurl 响应实际的源 host，优先命中放行
+        if (this.allowedHosts.has(host)) {
+            return true;
+        }
+        // 静态后缀列表保留作基础防线
         let suffixes: string[] = LocalDashServer.ALLOWED_HOST_SUFFIXES;
         for (let i: number = 0; i < suffixes.length; i++) {
             let suffix: string = suffixes[i];

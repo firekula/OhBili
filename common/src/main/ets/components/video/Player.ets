@@ -46,7 +46,7 @@ import { DanmakuParser } from '../../model/proto/DanmakuParser';
 import { BLog } from '../../utils/BLog';
 import { WindowManager } from '../../utils/WindowManager';
 import { ApiManager } from '../../network/ApiManager';
-import { PlayUrl, PlayUrlResponse } from '../../model/response/PlayUrlResponse';
+import { PlayUrl, PlayUrlResponse, BiliDash } from '../../model/response/PlayUrlResponse';
 import { ApiResponse } from '../../model/response/Response';
 import { VideoPartsResponse } from '../../model/response/VideoPartsResponse';
 import { ApiConstants } from '../../network/ApiConstants';
@@ -892,6 +892,7 @@ export struct PlayerView {
       if (mpd == '') {
         return false;
       }
+      this.mDashServer.updateAllowedHosts(this.collectDashSourceUrls(resp.data.dash));
       this.mDashServer.updateMpd(mpd);
       this.mDashProxyBase = 'http://127.0.0.1:' + port;
       this.mDashActive = true;
@@ -924,6 +925,22 @@ export struct PlayerView {
       BLog.i("requestPlayUrl Response Data url=" + this.mPlayUrl);
       this.initPlay(this.mPlayUrl);
     });
+  }
+
+  /** 收集 DASH 响应中实际用作代理源的 baseUrl（video+audio），供动态 host 白名单注入 */
+  private collectDashSourceUrls(dash: BiliDash): string[] {
+    let urls: string[] = [];
+    if (dash.video != null) {
+      for (let i = 0; i < dash.video.length; i++) {
+        urls.push(dash.video[i].baseUrl);
+      }
+    }
+    if (dash.audio != null) {
+      for (let i = 0; i < dash.audio.length; i++) {
+        urls.push(dash.audio[i].baseUrl);
+      }
+    }
+    return urls;
   }
 
   /**
@@ -1105,6 +1122,7 @@ export struct PlayerView {
                 .showToast({ message: '清晰度切换失败，请稍后重试' });
               return;
             }
+            this.mDashServer.updateAllowedHosts(this.collectDashSourceUrls(resp.data.dash));
             this.mDashServer.updateMpd(mpd);
             AppStorage.setOrCreate('ohBiliPlayQn', qn);
             if (qn > 0) {
@@ -1251,6 +1269,7 @@ export struct PlayerView {
             this.getUIContext().getPromptAction().showToast({ message: '解码偏好切换失败，请稍后重试' });
             return;
           }
+          this.mDashServer.updateAllowedHosts(this.collectDashSourceUrls(resp.data.dash));
           this.mDashServer.updateMpd(mpd);
           BLog.i('BiliPlayer codec preference rebuild, pref=' + mpdOpts.codecPreference
             + ', resumeMs=' + curMs);
