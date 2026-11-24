@@ -272,6 +272,9 @@ export class LocalDashServer {
         if (host.length === 0) {
             return false;
         }
+        if (!/^[a-z0-9.-]+$/.test(host)) {
+            return false;
+        }
         let suffixes: string[] = LocalDashServer.ALLOWED_HOST_SUFFIXES;
         for (let i: number = 0; i < suffixes.length; i++) {
             let suffix: string = suffixes[i];
